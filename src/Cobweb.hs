@@ -322,6 +322,16 @@ unzipping f =
     yieldOn t1 b
     yieldOn t2 c
 
+-- Fuse!
+
+fuseCons ::
+     (Fusing n k cs, Functor m, Functor (HSum cs))
+  => TNat n
+  -> TNat k
+  -> Node cs m r
+  -> Node (Remove n cs) m r
+fuseCons n k = mapsAll (fuse n k)
+
 -- Connecting
 class Annihilate f g | f -> g, g -> f where
   annihilate :: f a -> g b -> (a, b)

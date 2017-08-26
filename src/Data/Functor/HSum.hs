@@ -157,3 +157,24 @@ instance FiniteHSum '[] where
 
 instance FiniteHSum fs => FiniteHSum (f : fs) where
   inr _ = That . inr (Proxy :: Proxy fs)
+
+class Fusing n m cs where
+  fuse :: TNat n -> TNat m -> HSum cs a -> HSum (Remove n cs) a
+
+instance (At m cs ~ c, HasHSum m cs) => Fusing 'Z ('S m) (c : cs) where
+  fuse TZero (TSucc m) hsum =
+    case extract TZero hsum of
+      Right c -> embed m c
+      Left other -> other
+
+instance (At n cs ~ c, HasHSum n cs) => Fusing ('S n) 'Z (c : cs) where
+  fuse n TZero hsum =
+    case extract n hsum of
+      Right c -> This c
+      Left other -> other
+
+instance Fusing n m cs => Fusing ('S n) ('S m) (c : cs) where
+  fuse (TSucc n) (TSucc m) hsum =
+    case hsum of
+      This x -> This x
+      That other -> That (fuse n m other)
