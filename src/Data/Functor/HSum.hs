@@ -178,3 +178,15 @@ instance Fusing n m cs => Fusing ('S n) ('S m) (c : cs) where
     case hsum of
       This x -> This x
       That other -> That (fuse n m other)
+
+class (HasHSum (LastIndex fs) fs, FiniteHSum fs) => FiniteNESum fs where
+  type LastIndex fs :: Nat
+  lastIndex :: proxy fs -> TNat (LastIndex fs)
+
+instance FiniteNESum '[f] where
+  type LastIndex '[f] = N0
+  lastIndex _ = TZero
+
+instance FiniteNESum (f' : fs) => FiniteNESum (f : f' : fs) where
+  type LastIndex (f : f' : fs) = 'S (LastIndex (f' : fs))
+  lastIndex _ = TSucc (lastIndex (Proxy :: Proxy (f' : fs)))

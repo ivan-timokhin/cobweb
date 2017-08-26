@@ -342,6 +342,21 @@ instance Annihilate ((,) e) ((->) e) where
 instance Annihilate ((->) e) ((,) e) where
   annihilate fa (e, b) = (fa e, b)
 
+(|$) ::
+     forall lcs rcs r m a.
+     ( FiniteHSum (Remove (LastIndex lcs) lcs)
+     , FiniteNESum lcs
+     , Functor (HSum (Remove (LastIndex lcs) lcs))
+     , Functor r
+     , Functor (HSum rcs)
+     , Annihilate (At (LastIndex lcs) lcs) r
+     , Functor m
+     )
+  => Node lcs m a
+  -> Node (r : rcs) m a
+  -> Node (Concat (Remove (LastIndex lcs) lcs) rcs) m a
+(|$) = connectOn (lastIndex (Proxy :: Proxy lcs)) t0
+
 connectOn ::
      forall n k lcs rcs m r.
      ( FiniteHSum (Remove n lcs)
