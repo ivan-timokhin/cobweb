@@ -120,7 +120,7 @@ connectsOn ::
      (HasHSum n cs, Functor c, At n cs ~ c) => TNat n -> c r -> Node cs m r
 connectsOn n con = Node $ ConnectF $ embed n $ fmap (Node . ReturnF) con
 
-run :: Monad m => Node '[] m r -> m r
+run :: Monad m => Effect m r -> m r
 run = cata alg
   where
     alg (ReturnF r) = pure r
@@ -131,11 +131,13 @@ type Yielding = (,)
 
 type Awaiting = (->)
 
-type Producer a m r = Node '[ Yielding a] m r
+type Producer a = Node '[ Yielding a]
 
-type Consumer a m r = Node '[ Awaiting a] m r
+type Consumer a = Node '[ Awaiting a]
 
-type Pipe a b m r = Node '[ Awaiting a, Yielding b] m r
+type Pipe a b = Node '[ Awaiting a, Yielding b]
+
+type Effect = Node '[]
 
 yieldOn :: (HasHSum n cs, At n cs ~ Yielding a) => TNat n -> a -> Node cs m ()
 yieldOn n a = connectsOn n (a, ())
