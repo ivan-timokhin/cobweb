@@ -23,13 +23,20 @@ import Data.Bifunctor (first)
 import Data.Foldable (traverse_)
 import Data.Functor.Compose (Compose(getCompose))
 import Data.Functor.Foldable (Base, Recursive(cata, project))
-import Data.Functor.HSum
 import Data.Proxy (Proxy(Proxy))
+import Data.Void (absurd)
+
+import Cobweb.Type.Combinators
+import Data.Type.Length (Length)
+import Data.Type.Sum.Lifted (FSum, nilFSum)
+import Type.Class.Known (Known)
+import Type.Family.List (type (++), Last, Null)
+import Type.Family.Nat (Len, NatEq, Pred)
 
 data NodeF (cs :: [* -> *]) (m :: * -> *) r a
   = ReturnF r
   | EffectF (m a)
-  | ConnectF (HSum cs a)
+  | ConnectF (FSum cs a)
 
 deriving instance
          (All Functor cs, Functor m) => Functor (NodeF cs m r)
@@ -74,8 +81,7 @@ instance MonadTrans (Node cs) where
 instance (All Functor cs, MonadIO m) => MonadIO (Node cs m) where
   liftIO = lift . liftIO
 
-instance (All Functor cs, Fail.MonadFail m) =>
-         Fail.MonadFail (Node cs m) where
+instance (All Functor cs, Fail.MonadFail m) => Fail.MonadFail (Node cs m) where
   fail = lift . Fail.fail
 
 -- This instance is "undecidable", but it's fine, since HSum doesn't
@@ -95,7 +101,7 @@ unsafeHoist f = transform alg
     alg (ConnectF con) = ConnectF con
     alg (EffectF eff) = EffectF (f eff)
 
-inspect :: Monad m => Node cs m r -> m (Either r (HSum cs (Node cs m r)))
+inspect :: Monad m => Node cs m r -> m (Either r (FSum cs (Node cs m r)))
 inspect (Node web) =
   case web of
     ReturnF r -> pure (Left r)
@@ -104,7 +110,7 @@ inspect (Node web) =
 
 unfold ::
      (Functor m, All Functor cs)
-  => (b -> m (Either r (HSum cs b)))
+  => (b -> m (Either r (FSum cs b)))
   -> b
   -> Node cs m r
 unfold step = loop
@@ -116,16 +122,15 @@ unfold step = loop
 observe :: (Monad m, All Functor cs) => Node cs m r -> Node cs m r
 observe = unfold inspect
 
-connectsOn ::
-     (HasHSum n cs, Functor c, At n cs ~ c) => TNat n -> c r -> Node cs m r
-connectsOn n con = Node $ ConnectF $ embed n $ fmap (Node . ReturnF) con
+connectsOn :: Functor c => IIndex n cs c -> c r -> Node cs m r
+connectsOn n con = Node $ ConnectF $ finjectIdx n $ fmap (Node . ReturnF) con
 
 run :: Monad m => Effect m r -> m r
 run = cata alg
   where
     alg (ReturnF r) = pure r
     alg (EffectF eff) = join eff
-    alg (ConnectF con) = closed con
+    alg (ConnectF con) = absurd (nilFSum con)
 
 type Yielding = (,)
 
@@ -139,25 +144,20 @@ type Pipe a b = Node '[ Awaiting a, Yielding b]
 
 type Effect = Node '[]
 
-yieldOn :: (HasHSum n cs, At n cs ~ Yielding a) => TNat n -> a -> Node cs m ()
+yieldOn :: IIndex n cs (Yielding a) -> a -> Node cs m ()
 yieldOn n a = connectsOn n (a, ())
 
 eachOn ::
-     ( HasHSum n cs
-     , At n cs ~ Yielding a
-     , Functor m
-     , All Functor cs
-     , Foldable f
-     )
-  => TNat n
+     (Functor m, All Functor cs, Foldable f)
+  => IIndex n cs (Yielding a)
   -> f a
   -> Node cs m ()
 eachOn n = traverse_ (yieldOn n)
 
 each :: (Foldable f, Functor m) => f a -> Producer a m ()
-each = eachOn t0
+each = eachOn i0
 
-awaitOn :: (HasHSum n cs, At n cs ~ Awaiting a) => TNat n -> Node cs m a
+awaitOn :: IIndex n cs (Awaiting a) -> Node cs m a
 awaitOn n = connectsOn n id
 
 onlyOne :: Node '[ c] m r -> Node '[ c] m r
@@ -165,7 +165,7 @@ onlyOne = id
 
 mapsAll ::
      (Functor m, All Functor cs)
-  => (forall x. HSum cs x -> HSum cs' x)
+  => (forall x. FSum cs x -> FSum cs' x)
   -> Node cs m r
   -> Node cs' m r
 mapsAll f = transform alg
@@ -175,43 +175,43 @@ mapsAll f = transform alg
     alg (ConnectF con) = ConnectF (f con)
 
 mapsOn ::
-     (Functor m, All Functor cs)
-  => TNat n
-  -> (forall x. At n cs x -> c x)
+     (Functor m, All Functor cs, IReplaced n cs c' cs')
+  => IIndex n cs c
+  -> (forall x. c x -> c' x)
   -> Node cs m r
-  -> Node (Replace n c cs) m r
-mapsOn n f = mapsAll (replace n f)
+  -> Node cs' m r
+mapsOn n f = mapsAll (freplaceIdx n f)
 
 mapOn ::
-     (Functor m, All Functor cs, At n cs ~ Yielding a)
-  => TNat n
+     (Functor m, All Functor cs, IReplaced n cs (Yielding b) cs')
+  => IIndex n cs (Yielding a)
   -> (a -> b)
   -> Node cs m r
-  -> Node (Replace n (Yielding b) cs) m r
+  -> Node cs' m r
 mapOn n f = mapsOn n (first f)
 
 mapping :: Functor m => (a -> b) -> Node '[ Awaiting a, Yielding b] m r
 mapping f =
   forever $ do
-    a <- awaitOn t0
-    yieldOn t1 (f a)
+    a <- awaitOn i0
+    yieldOn i1 (f a)
 
 premapOn ::
-     (Functor m, All Functor cs, At n cs ~ Awaiting a)
-  => TNat n
+     (Functor m, All Functor cs, IReplaced n cs (Awaiting b) cs')
+  => IIndex n cs (Awaiting a)
   -> (b -> a)
   -> Node cs m r
-  -> Node (Replace n (Awaiting b) cs) m r
+  -> Node cs' m r
 premapOn n f = mapsOn n (. f)
 
 foldOn ::
-     (Functor m, At n cs ~ Yielding a, All Functor (Remove n cs))
+     (Functor m, IWithout n cs cs', All Functor cs')
   => (x -> a -> x)
   -> x
   -> (x -> b)
-  -> TNat n
+  -> IIndex n cs (Yielding a)
   -> Node cs m r
-  -> Node (Remove n cs) m (b, r)
+  -> Node cs' m (b, r)
 foldOn comb seed fin n = loop seed
   where
     loop !z (Node web) =
@@ -220,22 +220,22 @@ foldOn comb seed fin n = loop seed
         ReturnF r -> ReturnF (fin z, r)
         EffectF eff -> EffectF (fmap (loop z) eff)
         ConnectF con ->
-          case extract n con of
+          case fdecompIdx n con of
             Right (a, rest) -> getNode $ loop (comb z a) rest
             Left other -> ConnectF (fmap (loop z) other)
 
 foldOnly ::
      Monad m => (x -> a -> x) -> x -> (x -> b) -> Producer a m r -> m (b, r)
-foldOnly comb seed fin = run . foldOn comb seed fin t0
+foldOnly comb seed fin = run . foldOn comb seed fin i0
 
 foldMOn ::
-     (Functor m, At n cs ~ Yielding a, All Functor (Remove n cs))
+     (Functor m, IWithout n cs cs', All Functor cs')
   => (x -> a -> m x)
   -> m x
   -> (x -> m b)
-  -> TNat n
+  -> IIndex n cs (Yielding a)
   -> Node cs m r
-  -> Node (Remove n cs) m (b, r)
+  -> Node cs' m (b, r)
 foldMOn comb seed fin n node' = Node (EffectF (fmap (flip loop node') seed))
   where
     loop !z (Node node) =
@@ -244,7 +244,7 @@ foldMOn comb seed fin n node' = Node (EffectF (fmap (flip loop node') seed))
         ReturnF r -> EffectF (fmap (\b -> pure (b, r)) (fin z))
         EffectF eff -> EffectF (fmap (loop z) eff)
         ConnectF con ->
-          case extract n con of
+          case fdecompIdx n con of
             Left other -> ConnectF (fmap (loop z) other)
             Right (a, rest) -> EffectF (fmap (flip loop rest) (comb z a))
 
@@ -255,45 +255,46 @@ foldMOnly ::
   -> (x -> m b)
   -> Producer a m r
   -> m (b, r)
-foldMOnly comb seed fin = run . foldMOn comb seed fin t0
+foldMOnly comb seed fin = run . foldMOn comb seed fin i0
 
 forsOn ::
-     forall m n cs cs' r.
+     forall m n cs cs' cs'' r c.
      ( Functor m
      , All Functor cs
-     , All Functor (Concat (Remove n cs) cs')
+     , IWithout n cs cs''
+     , All Functor (cs'' ++ cs')
      , All Functor cs'
-     , FiniteHSum (Remove n cs)
+     , Known Length cs''
      )
-  => TNat n
-  -> (forall x. At n cs x -> Node cs' m x)
+  => IIndex n cs c
+  -> (forall x. c x -> Node cs' m x)
   -> Node cs m r
-  -> Node (Concat (Remove n cs) cs') m r
+  -> Node (cs'' ++ cs') m r
 forsOn n f = transform alg
   where
     alg (ReturnF r) = ReturnF r
     alg (EffectF eff) = EffectF eff
     alg (ConnectF con) =
-      case extract n con of
-        Left other -> ConnectF (inl proxyInner other)
-        Right c -> getNode $ join $ mapsAll (inr proxyOuter) $ f c
+      case fdecompIdx n con of
+        Left other -> ConnectF (finl proxyInner other)
+        Right c -> getNode $ join $ mapsAll (finr proxyOuter) $ f c
     proxyInner :: Proxy cs'
     proxyInner = Proxy
-    proxyOuter :: Proxy (Remove n cs)
+    proxyOuter :: Proxy cs''
     proxyOuter = Proxy
 
 forOn ::
      ( Functor m
      , All Functor cs
-     , All Functor (Concat (Remove n cs) cs')
+     , IWithout n cs cs''
+     , All Functor (cs'' ++ cs')
      , All Functor cs'
-     , FiniteHSum (Remove n cs)
-     , At n cs ~ Yielding a
+     , Known Length cs''
      )
-  => TNat n
+  => IIndex n cs (Yielding a)
   -> (a -> Node cs' m ())
   -> Node cs m r
-  -> Node (Concat (Remove n cs) cs') m r
+  -> Node (cs'' ++ cs') m r
 forOn n f = forsOn n (\(a, r) -> r <$ f a)
 
 for ::
@@ -301,7 +302,7 @@ for ::
   => (a -> Node cs m ())
   -> Producer a m r
   -> Node cs m r
-for = forOn t0
+for = forOn i0
 
 zipping ::
      Functor m
@@ -309,9 +310,9 @@ zipping ::
   -> Node '[ Awaiting a, Awaiting b, Yielding c] m r
 zipping f =
   forever $ do
-    a <- awaitOn t0
-    b <- awaitOn t1
-    yieldOn t2 (f a b)
+    a <- awaitOn i0
+    b <- awaitOn i1
+    yieldOn i2 (f a b)
 
 unzipping ::
      Functor m
@@ -319,19 +320,18 @@ unzipping ::
   -> Node '[ Awaiting a, Yielding b, Yielding c] m r
 unzipping f =
   forever $ do
-    a <- awaitOn t0
+    a <- awaitOn i0
     let (b, c) = f a
-    yieldOn t1 b
-    yieldOn t2 c
+    yieldOn i1 b
+    yieldOn i2 c
 
 -- Fuse!
-
 fuseCons ::
-     (Fusing n k cs, Functor m, All Functor cs)
-  => TNat n
-  -> TNat k
+     (IWithout n cs cs', NatEq n k ~ 'False, Functor m, All Functor cs)
+  => IIndex n cs c
+  -> IIndex k cs c
   -> Node cs m r
-  -> Node (Remove n cs) m r
+  -> Node cs' m r
 fuseCons n k = mapsAll (fuse n k)
 
 -- Connecting
@@ -345,148 +345,136 @@ instance Annihilate ((->) e) ((,) e) where
   annihilate fa (e, b) = (fa e, b)
 
 (|$) ::
-     forall lcs rcs r m a.
-     ( FiniteHSum (Remove (LastIndex lcs) lcs)
-     , FiniteNESum lcs
-     , All Functor (Remove (LastIndex lcs) lcs)
-     , Functor r
-     , All Functor rcs
-     , Annihilate (At (LastIndex lcs) lcs) r
+     ( IWithout (Pred (Len lcs)) lcs lcs'
+     , Known Length lcs
+     , Known Length lcs'
+     , Null lcs ~ 'False
+     , All Functor lcs'
+     , All Functor rcs'
+     , Annihilate (Last lcs) r
      , Functor m
      )
   => Node lcs m a
-  -> Node (r : rcs) m a
-  -> Node (Concat (Remove (LastIndex lcs) lcs) rcs) m a
-(|$) = connectOn (lastIndex (Proxy :: Proxy lcs)) t0
+  -> Node (r : rcs') m a
+  -> Node (lcs' ++ rcs') m a
+(|$) = connectOn lastIndex i0
 
 connectOn ::
-     forall n k lcs rcs m r.
-     ( FiniteHSum (Remove n lcs)
-     , All Functor (Remove n lcs)
-     , All Functor (Remove k rcs)
-     , Annihilate (At n lcs) (At k rcs)
+     forall n k lcs lcs' lc rcs rcs' rc m r.
+     ( IWithout n lcs lcs'
+     , IWithout k rcs rcs'
+     , Known Length lcs'
+     , All Functor lcs'
+     , All Functor rcs'
+     , Annihilate lc rc
      , Functor m
      )
-  => TNat n
-  -> TNat k
+  => IIndex n lcs lc
+  -> IIndex k rcs rc
   -> Node lcs m r
   -> Node rcs m r
-  -> Node (Concat (Remove n lcs) (Remove k rcs)) m r
+  -> Node (lcs' ++ rcs') m r
 connectOn n k left right =
   Node $
   case getNode right of
     ReturnF r -> ReturnF r
     EffectF eff -> EffectF (fmap (connectOn n k left) eff)
     ConnectF hsum ->
-      case extract k hsum of
-        Left other -> ConnectF (inr proxyL (fmap (connectOn n k left) other))
+      case fdecompIdx k hsum of
+        Left other -> ConnectF (finr proxyL (fmap (connectOn n k left) other))
         Right con -> getNode $ provideUpstream left con
   where
     provideUpstream ::
-         Node lcs m r
-      -> At k rcs (Node rcs m r)
-      -> Node (Concat (Remove n lcs) (Remove k rcs)) m r
+         Node lcs m r -> rc (Node rcs m r) -> Node (lcs' ++ rcs') m r
     provideUpstream l r =
       Node $
       case getNode l of
         ReturnF x -> ReturnF x
         EffectF eff -> EffectF (fmap (`provideUpstream` r) eff)
         ConnectF hsum ->
-          case extract n hsum of
+          case fdecompIdx n hsum of
             Left other ->
-              ConnectF (inl proxyR (fmap (`provideUpstream` r) other))
+              ConnectF (finl proxyR (fmap (`provideUpstream` r) other))
             Right lcon ->
               let (l', r') = annihilate lcon r
               in getNode $ connectOn n k l' r'
-    proxyR = Proxy :: Proxy (Remove k rcs)
-    proxyL = Proxy :: Proxy (Remove n lcs)
+    proxyR = Proxy :: Proxy rcs'
+    proxyL = Proxy :: Proxy lcs'
 
 pullOn ::
-     forall n k lcs rcs lreq lresp rreq rresp m r.
-     ( FiniteHSum (Remove n lcs)
-     , All Functor (Remove n lcs)
-     , All Functor (Remove k rcs)
-     , At n lcs ~ Compose lresp lreq
-     , At k rcs ~ Compose rresp rreq
+     forall n k lcs lcs' rcs rcs' lreq lresp rreq rresp m r.
+     ( IWithout n lcs lcs'
+     , IWithout k rcs rcs'
+     , Known Length lcs'
+     , All Functor lcs'
+     , All Functor rcs'
      , Annihilate lresp rreq
      , Annihilate rresp lreq
      , Functor m
      )
-  => TNat n
-  -> TNat k
+  => IIndex n lcs (Compose lresp lreq)
+  -> IIndex k rcs (Compose rresp rreq)
   -> lreq (Node lcs m r)
   -> Node rcs m r
-  -> Node (Concat (Remove n lcs) (Remove k rcs)) m r
+  -> Node (lcs' ++ rcs') m r
 pullOn n k left right =
   Node $
   case getNode right of
     ReturnF r -> ReturnF r
     EffectF eff -> EffectF (fmap (pullOn n k left) eff)
     ConnectF hsum ->
-      case extract k hsum of
-        Left other -> ConnectF (inr proxyL (fmap (pullOn n k left) other))
+      case fdecompIdx k hsum of
+        Left other -> ConnectF (finr proxyL (fmap (pullOn n k left) other))
         Right con ->
           let (r', l') = annihilate (getCompose con) left
           in getNode $ pushOn n k l' r'
   where
-    proxyL :: Proxy (Remove n lcs)
+    proxyL :: Proxy lcs'
     proxyL = Proxy
 
 pushOn ::
-     forall n k lcs rcs lreq lresp rreq rresp m r.
-     ( FiniteHSum (Remove n lcs)
-     , All Functor (Remove n lcs)
-     , All Functor (Remove k rcs)
-     , At n lcs ~ Compose lresp lreq
-     , At k rcs ~ Compose rresp rreq
+     forall n k lcs lcs' rcs rcs' lreq lresp rreq rresp m r.
+     ( IWithout n lcs lcs'
+     , IWithout k rcs rcs'
+     , Known Length lcs'
+     , All Functor lcs'
+     , All Functor rcs'
      , Annihilate lresp rreq
      , Annihilate rresp lreq
      , Functor m
      )
-  => TNat n
-  -> TNat k
+  => IIndex n lcs (Compose lresp lreq)
+  -> IIndex k rcs (Compose rresp rreq)
   -> Node lcs m r
   -> rreq (Node rcs m r)
-  -> Node (Concat (Remove n lcs) (Remove k rcs)) m r
+  -> Node (lcs' ++ rcs') m r
 pushOn n k left right =
   Node $
   case getNode left of
     ReturnF r -> ReturnF r
     EffectF eff -> EffectF (fmap (\l -> pushOn n k l right) eff)
     ConnectF hsum ->
-      case extract n hsum of
+      case fdecompIdx n hsum of
         Left other ->
-          ConnectF (inl proxyR (fmap (\l -> pushOn n k l right) other))
+          ConnectF (finl proxyR (fmap (\l -> pushOn n k l right) other))
         Right con ->
           let (l', r') = annihilate (getCompose con) right
           in getNode $ pullOn n k l' r'
   where
-    proxyR :: Proxy (Remove k rcs)
+    proxyR :: Proxy rcs'
     proxyR = Proxy
-
-connectOn0 ::
-     ( All Functor lcs
-     , FiniteHSum lcs
-     , All Functor rcs
-     , Functor m
-     , Annihilate l r
-     )
-  => Node (l : lcs) m a
-  -> Node (r : rcs) m a
-  -> Node (Concat lcs rcs) m a
-connectOn0 = connectOn t0 t0
 
 (|=) ::
      ( All Functor lcs
-     , FiniteHSum lcs
+     , Known Length lcs
      , All Functor rcs
-     , Functor m
      , Annihilate l r
+     , Functor m
      )
   => Node (l : lcs) m a
   -> Node (r : rcs) m a
-  -> Node (Concat lcs rcs) m a
-(|=) = connectOn0
+  -> Node (lcs ++ rcs) m a
+(|=) = connectOn i0 i0
 
 infixl 5 |=
 
@@ -503,7 +491,7 @@ chunkBy n = loop
       case getNode node of
         ReturnF r -> ReturnF r
         EffectF eff -> EffectF (fmap loop eff)
-        ConnectF _ -> ConnectF (embed t0 $ chunkOff n node)
+        ConnectF _ -> ConnectF (finjectIdx i0 $ chunkOff n node)
     chunkOff m node
       | m <= 0 = pure (loop node)
       | otherwise =
@@ -522,26 +510,26 @@ connectPipe ::
   => Node '[ i, o'] m r
   -> Node '[ i', o] m r
   -> Node '[ i, o] m r
-connectPipe = connectOn t1 t0
+connectPipe = connectOn i1 i0
 
 stdoutLn :: MonadIO m => Consumer String m r
 stdoutLn =
   forever $ do
-    str <- awaitOn t0
+    str <- awaitOn i0
     liftIO $ putStrLn str
 
 stdinLn :: MonadIO m => Producer String m r
-stdinLn = forever $ liftIO getLine >>= yieldOn t0
+stdinLn = forever $ liftIO getLine >>= yieldOn i0
 
 takeW :: Functor m => Int -> Node '[ Awaiting a, Yielding a] m ()
-takeW n = replicateM_ n $ awaitOn t0 >>= yieldOn t1
+takeW n = replicateM_ n $ awaitOn i0 >>= yieldOn i1
 
 tee :: Functor m => Node '[ Awaiting a, Yielding a, Yielding a] m r
 tee =
   forever $ do
-    a <- awaitOn t0
-    yieldOn t1 a
-    yieldOn t2 a
+    a <- awaitOn i0
+    yieldOn i1 a
+    yieldOn i2 a
 
 concatInputs ::
      (Functor m, Monoid a) => Node '[ Awaiting a, Awaiting a, Yielding a] m r
