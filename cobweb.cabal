@@ -20,8 +20,7 @@ library
                        -Wincomplete-record-updates
                        -Wmissing-import-lists
                        -Widentities
-  exposed-modules:     Data.Functor.HSum
-                     , Cobweb
+  exposed-modules:     Cobweb
                      , Cobweb.Type.Combinators
   build-depends:       base >= 4.7 && < 5
                      , lens
