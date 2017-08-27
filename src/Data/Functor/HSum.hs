@@ -1,3 +1,4 @@
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE PolyKinds #-}
@@ -15,6 +16,7 @@ module Data.Functor.HSum where
 import Data.Type.Equality ((:~:)(Refl))
 import Data.Proxy (Proxy(Proxy))
 import Data.Bifunctor (bimap)
+import Data.Kind (Constraint)
 
 data HSum :: [* -> *] -> * -> * where
   This :: f a -> HSum (f : fs) a
@@ -23,12 +25,13 @@ data HSum :: [* -> *] -> * -> * where
 closed :: HSum '[] a -> b
 closed x = case x of {}
 
-instance Functor (HSum '[]) where
-  fmap _ = closed
+type family All (f :: k -> Constraint) (xs :: [k]) = (c :: Constraint) where
+  All f '[] = ()
+  All f (x : xs) = (f x, All f xs)
 
-instance (Functor f, Functor (HSum fs)) => Functor (HSum (f : fs)) where
+instance All Functor fs => Functor (HSum fs) where
   fmap f (This x) = This (fmap f x)
-  fmap f (That xs) = That (fmap f xs)
+  fmap f (That x) = That (fmap f x)
 
 data Nat
   = Z

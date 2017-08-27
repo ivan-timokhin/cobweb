@@ -32,7 +32,7 @@ data NodeF (cs :: [* -> *]) (m :: * -> *) r a
   | ConnectF (HSum cs a)
 
 deriving instance
-         (Functor (HSum cs), Functor m) => Functor (NodeF cs m r)
+         (All Functor cs, Functor m) => Functor (NodeF cs m r)
 
 newtype Node cs m r = Node
   { getNode :: NodeF cs m r (Node cs m r)
@@ -40,28 +40,28 @@ newtype Node cs m r = Node
 
 type instance Base (Node cs m r) = NodeF cs m r
 
-instance (Functor (HSum cs), Functor m) => Recursive (Node cs m r) where
+instance (All Functor cs, Functor m) => Recursive (Node cs m r) where
   project = getNode
 
 transform ::
-     (Functor (HSum cs), Functor m)
+     (All Functor cs, Functor m)
   => (NodeF cs m r (Node cs' m' r') -> NodeF cs' m' r' (Node cs' m' r'))
   -> Node cs m r
   -> Node cs' m' r'
 transform alg = cata (Node . alg)
 
-instance (Functor (HSum cs), Functor m) => Functor (Node cs m) where
+instance (All Functor cs, Functor m) => Functor (Node cs m) where
   fmap f = transform alg
     where
       alg (ReturnF r) = ReturnF (f r)
       alg (EffectF eff) = EffectF eff
       alg (ConnectF con) = ConnectF con
 
-instance (Functor (HSum cs), Functor m) => Applicative (Node cs m) where
+instance (All Functor cs, Functor m) => Applicative (Node cs m) where
   pure = Node . ReturnF
   (<*>) = ap
 
-instance (Functor (HSum cs), Functor m) => Monad (Node cs m) where
+instance (All Functor cs, Functor m) => Monad (Node cs m) where
   x >>= f = transform alg x
     where
       alg (ReturnF r) = getNode (f r)
@@ -71,21 +71,21 @@ instance (Functor (HSum cs), Functor m) => Monad (Node cs m) where
 instance MonadTrans (Node cs) where
   lift eff = Node $ EffectF $ fmap (Node . ReturnF) eff
 
-instance (Functor (HSum cs), MonadIO m) => MonadIO (Node cs m) where
+instance (All Functor cs, MonadIO m) => MonadIO (Node cs m) where
   liftIO = lift . liftIO
 
-instance (Functor (HSum cs), Fail.MonadFail m) =>
+instance (All Functor cs, Fail.MonadFail m) =>
          Fail.MonadFail (Node cs m) where
   fail = lift . Fail.fail
 
 -- This instance is "undecidable", but it's fine, since HSum doesn't
 -- actually know anything about Node, and expands in functor
 -- instances for each interface in the list.
-instance Functor (HSum cs) => MFunctor (Node cs) where
+instance All Functor cs => MFunctor (Node cs) where
   hoist f = unsafeHoist f . observe
 
 unsafeHoist ::
-     (Functor (HSum cs), Functor m)
+     (All Functor cs, Functor m)
   => (forall x. m x -> n x)
   -> Node cs m r
   -> Node cs n r
@@ -103,7 +103,7 @@ inspect (Node web) =
     ConnectF con -> pure (Right con)
 
 unfold ::
-     (Functor m, Functor (HSum cs))
+     (Functor m, All Functor cs)
   => (b -> m (Either r (HSum cs b)))
   -> b
   -> Node cs m r
@@ -113,7 +113,7 @@ unfold step = loop
     loopstep (Left r) = ReturnF r
     loopstep (Right con) = ConnectF (fmap loop con)
 
-observe :: (Monad m, Functor (HSum cs)) => Node cs m r -> Node cs m r
+observe :: (Monad m, All Functor cs) => Node cs m r -> Node cs m r
 observe = unfold inspect
 
 connectsOn ::
@@ -146,7 +146,7 @@ eachOn ::
      ( HasHSum n cs
      , At n cs ~ Yielding a
      , Functor m
-     , Functor (HSum cs)
+     , All Functor cs
      , Foldable f
      )
   => TNat n
@@ -164,7 +164,7 @@ onlyOne :: Node '[ c] m r -> Node '[ c] m r
 onlyOne = id
 
 mapsAll ::
-     (Functor m, Functor (HSum cs))
+     (Functor m, All Functor cs)
   => (forall x. HSum cs x -> HSum cs' x)
   -> Node cs m r
   -> Node cs' m r
@@ -175,7 +175,7 @@ mapsAll f = transform alg
     alg (ConnectF con) = ConnectF (f con)
 
 mapsOn ::
-     (Functor m, Functor (HSum cs))
+     (Functor m, All Functor cs)
   => TNat n
   -> (forall x. At n cs x -> c x)
   -> Node cs m r
@@ -183,7 +183,7 @@ mapsOn ::
 mapsOn n f = mapsAll (replace n f)
 
 mapOn ::
-     (Functor m, Functor (HSum cs), At n cs ~ Yielding a)
+     (Functor m, All Functor cs, At n cs ~ Yielding a)
   => TNat n
   -> (a -> b)
   -> Node cs m r
@@ -197,7 +197,7 @@ mapping f =
     yieldOn t1 (f a)
 
 premapOn ::
-     (Functor m, Functor (HSum cs), At n cs ~ Awaiting a)
+     (Functor m, All Functor cs, At n cs ~ Awaiting a)
   => TNat n
   -> (b -> a)
   -> Node cs m r
@@ -205,7 +205,7 @@ premapOn ::
 premapOn n f = mapsOn n (. f)
 
 foldOn ::
-     (Functor m, At n cs ~ Yielding a, Functor (HSum (Remove n cs)))
+     (Functor m, At n cs ~ Yielding a, All Functor (Remove n cs))
   => (x -> a -> x)
   -> x
   -> (x -> b)
@@ -229,7 +229,7 @@ foldOnly ::
 foldOnly comb seed fin = run . foldOn comb seed fin t0
 
 foldMOn ::
-     (Functor m, At n cs ~ Yielding a, Functor (HSum (Remove n cs)))
+     (Functor m, At n cs ~ Yielding a, All Functor (Remove n cs))
   => (x -> a -> m x)
   -> m x
   -> (x -> m b)
@@ -260,9 +260,9 @@ foldMOnly comb seed fin = run . foldMOn comb seed fin t0
 forsOn ::
      forall m n cs cs' r.
      ( Functor m
-     , Functor (HSum cs)
-     , Functor (HSum (Concat (Remove n cs) cs'))
-     , Functor (HSum cs')
+     , All Functor cs
+     , All Functor (Concat (Remove n cs) cs')
+     , All Functor cs'
      , FiniteHSum (Remove n cs)
      )
   => TNat n
@@ -284,9 +284,9 @@ forsOn n f = transform alg
 
 forOn ::
      ( Functor m
-     , Functor (HSum cs)
-     , Functor (HSum (Concat (Remove n cs) cs'))
-     , Functor (HSum cs')
+     , All Functor cs
+     , All Functor (Concat (Remove n cs) cs')
+     , All Functor cs'
      , FiniteHSum (Remove n cs)
      , At n cs ~ Yielding a
      )
@@ -297,7 +297,7 @@ forOn ::
 forOn n f = forsOn n (\(a, r) -> r <$ f a)
 
 for ::
-     (Functor (HSum cs), Functor m)
+     (All Functor cs, Functor m)
   => (a -> Node cs m ())
   -> Producer a m r
   -> Node cs m r
@@ -327,7 +327,7 @@ unzipping f =
 -- Fuse!
 
 fuseCons ::
-     (Fusing n k cs, Functor m, Functor (HSum cs))
+     (Fusing n k cs, Functor m, All Functor cs)
   => TNat n
   -> TNat k
   -> Node cs m r
@@ -348,9 +348,9 @@ instance Annihilate ((->) e) ((,) e) where
      forall lcs rcs r m a.
      ( FiniteHSum (Remove (LastIndex lcs) lcs)
      , FiniteNESum lcs
-     , Functor (HSum (Remove (LastIndex lcs) lcs))
+     , All Functor (Remove (LastIndex lcs) lcs)
      , Functor r
-     , Functor (HSum rcs)
+     , All Functor rcs
      , Annihilate (At (LastIndex lcs) lcs) r
      , Functor m
      )
@@ -362,8 +362,8 @@ instance Annihilate ((->) e) ((,) e) where
 connectOn ::
      forall n k lcs rcs m r.
      ( FiniteHSum (Remove n lcs)
-     , Functor (HSum (Remove n lcs))
-     , Functor (HSum (Remove k rcs))
+     , All Functor (Remove n lcs)
+     , All Functor (Remove k rcs)
      , Annihilate (At n lcs) (At k rcs)
      , Functor m
      )
@@ -404,8 +404,8 @@ connectOn n k left right =
 pullOn ::
      forall n k lcs rcs lreq lresp rreq rresp m r.
      ( FiniteHSum (Remove n lcs)
-     , Functor (HSum (Remove n lcs))
-     , Functor (HSum (Remove k rcs))
+     , All Functor (Remove n lcs)
+     , All Functor (Remove k rcs)
      , At n lcs ~ Compose lresp lreq
      , At k rcs ~ Compose rresp rreq
      , Annihilate lresp rreq
@@ -435,8 +435,8 @@ pullOn n k left right =
 pushOn ::
      forall n k lcs rcs lreq lresp rreq rresp m r.
      ( FiniteHSum (Remove n lcs)
-     , Functor (HSum (Remove n lcs))
-     , Functor (HSum (Remove k rcs))
+     , All Functor (Remove n lcs)
+     , All Functor (Remove k rcs)
      , At n lcs ~ Compose lresp lreq
      , At k rcs ~ Compose rresp rreq
      , Annihilate lresp rreq
@@ -465,9 +465,9 @@ pushOn n k left right =
     proxyR = Proxy
 
 connectOn0 ::
-     ( Functor (HSum lcs)
+     ( All Functor lcs
      , FiniteHSum lcs
-     , Functor (HSum rcs)
+     , All Functor rcs
      , Functor m
      , Annihilate l r
      )
@@ -477,9 +477,9 @@ connectOn0 ::
 connectOn0 = connectOn t0 t0
 
 (|=) ::
-     ( Functor (HSum lcs)
+     ( All Functor lcs
      , FiniteHSum lcs
-     , Functor (HSum rcs)
+     , All Functor rcs
      , Functor m
      , Annihilate l r
      )
