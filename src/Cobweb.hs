@@ -30,6 +30,7 @@ import Cobweb.Type.Combinators
 import Data.Type.Length (Length)
 import Data.Type.Sum.Lifted (FSum, nilFSum)
 import Type.Class.Known (Known)
+import Type.Class.Witness ((:-), Witness((\\)))
 import Type.Family.List (type (++), Last, Null)
 import Type.Family.Nat (Len, NatEq, Pred)
 
@@ -262,6 +263,26 @@ forsOn ::
      ( Functor m
      , All Functor cs
      , IWithout n cs cs''
+     , Known Length cs''
+     , All Functor cs'
+     )
+  => IIndex n cs c
+  -> (forall x. c x -> Node cs' m x)
+  -> Node cs m r
+  -> Node (cs'' ++ cs') m r
+forsOn idx f =
+  forsOn_ idx f \\
+  (appendAll (Proxy :: Proxy Functor) (Proxy :: Proxy cs') :: ( Known Length cs''
+                                                              , All Functor cs''
+                                                              , All Functor cs') :- All Functor (cs'' ++ cs')) \\
+  (iwithoutRetainsAll (Proxy :: Proxy Functor) :: ( IWithout n cs cs''
+                                                  , All Functor cs) :- All Functor cs'')
+
+forsOn_ ::
+     forall m n cs cs' cs'' r c.
+     ( Functor m
+     , All Functor cs
+     , IWithout n cs cs''
      , All Functor (cs'' ++ cs')
      , All Functor cs'
      , Known Length cs''
@@ -270,7 +291,7 @@ forsOn ::
   -> (forall x. c x -> Node cs' m x)
   -> Node cs m r
   -> Node (cs'' ++ cs') m r
-forsOn n f = transform alg
+forsOn_ n f = transform alg
   where
     alg (ReturnF r) = ReturnF r
     alg (EffectF eff) = EffectF eff
@@ -287,7 +308,6 @@ forOn ::
      ( Functor m
      , All Functor cs
      , IWithout n cs cs''
-     , All Functor (cs'' ++ cs')
      , All Functor cs'
      , Known Length cs''
      )
@@ -345,6 +365,24 @@ instance Annihilate ((->) e) ((,) e) where
   annihilate fa (e, b) = (fa e, b)
 
 (|$) ::
+     forall lcs lcs' r rcs' m a.
+     ( IWithout (Pred (Len lcs)) lcs lcs'
+     , Known Length lcs
+     , All Functor lcs'
+     , All Functor rcs'
+     , Annihilate (Last lcs) r
+     , Functor m
+     )
+  => Node lcs m a
+  -> Node (r : rcs') m a
+  -> Node (lcs' ++ rcs') m a
+(|$) =
+  connectPipe_ \\
+  (iwithoutNonEmpty :: IWithout (Pred (Len lcs)) lcs lcs' :- (Null lcs ~ 'False)) \\
+  (iwithoutRetainsLength :: ( IWithout (Pred (Len lcs)) lcs lcs'
+                            , Known Length lcs) :- Known Length lcs')
+
+connectPipe_ ::
      ( IWithout (Pred (Len lcs)) lcs lcs'
      , Known Length lcs
      , Known Length lcs'
@@ -357,7 +395,7 @@ instance Annihilate ((->) e) ((,) e) where
   => Node lcs m a
   -> Node (r : rcs') m a
   -> Node (lcs' ++ rcs') m a
-(|$) = connectOn lastIndex i0
+connectPipe_ = connectOn lastIndex i0
 
 connectOn ::
      forall n k lcs lcs' lc rcs rcs' rc m r.
@@ -504,13 +542,6 @@ chunkBy n = loop
 -- examples
 connectTwo :: Monad m => Producer a m r -> Consumer a m r -> m r
 connectTwo l r = run $ l |= r
-
-connectPipe ::
-     (Functor i, Functor o, Annihilate o' i', Functor m)
-  => Node '[ i, o'] m r
-  -> Node '[ i', o] m r
-  -> Node '[ i, o] m r
-connectPipe = connectOn i1 i0
 
 stdoutLn :: MonadIO m => Consumer String m r
 stdoutLn =
