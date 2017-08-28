@@ -123,6 +123,9 @@ unfold step = loop
 observe :: (Monad m, All Functor cs) => Node cs m r -> Node cs m r
 observe = unfold inspect
 
+connects :: (All Functor cs) => FSum cs r -> Node cs m r
+connects con = Node $ ConnectF $ fmap (Node . ReturnF) con
+
 connectsOn :: Functor c => IIndex n cs c -> c r -> Node cs m r
 connectsOn n con = Node $ ConnectF $ finjectIdx n $ fmap (Node . ReturnF) con
 
@@ -565,3 +568,27 @@ tee =
 concatInputs ::
      (Functor m, Monoid a) => Node '[ Awaiting a, Awaiting a, Yielding a] m r
 concatInputs = zipping mappend
+
+-- FIXME figure out what it does and, depending on results,
+-- a) rewrite it correctly;
+-- b) rewrite it in a more understandable fashion, if it turns out to
+-- be correct;
+-- c) if none of the above applies/helps, at least explain what
+-- happens here in comments.
+distribute ::
+     forall m t cs r.
+     ( Monad m
+     , MonadTrans t
+     , MFunctor t
+     , Monad (t m)
+     , Monad (t (Node cs m))
+     , All Functor cs
+     )
+  => Node cs (t m) r
+  -> t (Node cs m) r
+distribute = cata alg
+  where
+    alg :: NodeF cs (t m) r (t (Node cs m) r) -> t (Node cs m) r
+    alg (ReturnF r) = pure r
+    alg (EffectF eff) = join $ hoist lift eff
+    alg (ConnectF con) = join $ lift $ connects con
