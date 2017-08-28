@@ -24,15 +24,20 @@ import Data.Foldable (traverse_)
 import Data.Functor.Compose (Compose(getCompose))
 import Data.Functor.Foldable (Base, Recursive(cata, project))
 import Data.Proxy (Proxy(Proxy))
-import Data.Void (absurd)
-
-import Cobweb.Type.Combinators
 import Data.Type.Length (Length)
 import Data.Type.Sum.Lifted (FSum, nilFSum)
+import Data.Void (absurd)
 import Type.Class.Known (Known)
 import Type.Class.Witness ((:-), Witness((\\)))
 import Type.Family.List (type (++), Last, Null)
 import Type.Family.Nat (Len, NatEq, Pred)
+
+import Cobweb.Type.Combinators
+       (All, IIndex, IReplaced, IWithout, fdecompIdx, finjectIdx, finl,
+        finr, freplaceIdx, fuse, i0, i1, i2, lastIndex)
+import Cobweb.Type.Lemmata
+       (appendAll, iwithoutNonEmpty, iwithoutRetainsAll,
+        iwithoutRetainsLength)
 
 data NodeF (cs :: [* -> *]) (m :: * -> *) r a
   = ReturnF r

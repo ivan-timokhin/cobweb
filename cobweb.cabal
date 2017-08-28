@@ -22,6 +22,7 @@ library
                        -Widentities
   exposed-modules:     Cobweb
                      , Cobweb.Type.Combinators
+                     , Cobweb.Type.Lemmata
   build-depends:       base >= 4.7 && < 5
                      , lens
                      , mtl
