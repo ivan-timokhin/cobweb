@@ -36,7 +36,6 @@ library
                      , Cobweb.Group
                      , Cobweb.Trans
   build-depends:       base >= 4.7 && < 5
-                     , lens
                      , mtl
                      , recursion-schemes
                      , mmorph
