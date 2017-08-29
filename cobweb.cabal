@@ -23,6 +23,18 @@ library
   exposed-modules:     Cobweb
                      , Cobweb.Type.Combinators
                      , Cobweb.Type.Lemmata
+                     , Cobweb.Internal
+                     , Cobweb.Core
+                     , Cobweb.Producer
+                     , Cobweb.Consumer
+                     , Cobweb.Fold
+                     , Cobweb.Pipe
+                     , Cobweb.Link
+                     , Cobweb.Fuse
+                     , Cobweb.Zip
+                     , Cobweb.Unzip
+                     , Cobweb.Group
+                     , Cobweb.Trans
   build-depends:       base >= 4.7 && < 5
                      , lens
                      , mtl
