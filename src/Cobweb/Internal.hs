@@ -6,7 +6,15 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RankNTypes #-}
 
-module Cobweb.Internal where
+module Cobweb.Internal
+  ( NodeF(ReturnF, EffectF, ConnectF)
+  , Node(Node, getNode)
+  , transform
+  , unsafeHoist
+  , inspect
+  , unfold
+  , observe
+  ) where
 
 import Control.Monad (ap)
 import qualified Control.Monad.Fail as Fail
