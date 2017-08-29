@@ -21,6 +21,7 @@ import qualified Control.Monad.Fail as Fail
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad.Morph (MFunctor(hoist), MMonad(embed))
 import Control.Monad.Trans (MonadTrans(lift))
+import Data.Bifunctor (Bifunctor(first, second))
 import Data.Functor.Foldable (Base, Recursive(cata, project))
 import Data.Type.Sum.Lifted (FSum)
 
@@ -33,6 +34,12 @@ data NodeF (cs :: [* -> *]) (m :: * -> *) r a
 
 deriving instance
          (All Functor cs, Functor m) => Functor (NodeF cs m r)
+
+instance (All Functor cs, Functor m) => Bifunctor (NodeF cs m) where
+  first f (ReturnF r) = ReturnF (f r)
+  first _ (EffectF eff) = EffectF eff
+  first _ (ConnectF con) = ConnectF con
+  second = fmap
 
 newtype Node cs m r = Node
   { getNode :: NodeF cs m r (Node cs m r)
@@ -51,11 +58,7 @@ transform ::
 transform alg = cata (Node . alg)
 
 instance (All Functor cs, Functor m) => Functor (Node cs m) where
-  fmap f = transform alg
-    where
-      alg (ReturnF r) = ReturnF (f r)
-      alg (EffectF eff) = EffectF eff
-      alg (ConnectF con) = ConnectF con
+  fmap f = transform (first f)
 
 instance (All Functor cs, Functor m) => Applicative (Node cs m) where
   pure = Node . ReturnF
