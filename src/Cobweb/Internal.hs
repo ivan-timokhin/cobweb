@@ -19,6 +19,8 @@ module Cobweb.Internal
   ) where
 
 import Control.Monad (ap)
+import Control.Monad.Base (MonadBase(liftBase))
+import Control.Monad.Catch (MonadCatch(catch), MonadThrow(throwM))
 import Control.Monad.Except (MonadError(catchError, throwError))
 import qualified Control.Monad.Fail as Fail
 import Control.Monad.IO.Class (MonadIO(liftIO))
@@ -26,6 +28,7 @@ import Control.Monad.Morph (MFunctor(hoist), MMonad(embed))
 import Control.Monad.Reader.Class (MonadReader(ask, local, reader))
 import Control.Monad.State.Class (MonadState(get, put, state))
 import Control.Monad.Trans (MonadTrans(lift))
+import Control.Monad.Trans.Resource (MonadResource(liftResourceT))
 import Data.Bifunctor (Bifunctor(first, second))
 import Data.Functor.Foldable (Base, Recursive(cata, project))
 import Data.Type.Sum.Lifted (FSum)
@@ -85,16 +88,21 @@ instance (All Functor cs, MonadIO m) => MonadIO (Node cs m) where
 instance (All Functor cs, Fail.MonadFail m) => Fail.MonadFail (Node cs m) where
   fail = lift . Fail.fail
 
+liftCatch ::
+     (All Functor cs, Applicative m)
+  => (m (Node cs m a) -> (e -> m (Node cs m a)) -> m (Node cs m a))
+  -> Node cs m a
+  -> (e -> Node cs m a)
+  -> Node cs m a
+liftCatch catchBase node handler = transform alg node
+  where
+    alg (ReturnF r) = ReturnF r
+    alg (ConnectF con) = ConnectF con
+    alg (EffectF eff) = EffectF $ eff `catchBase` (pure . handler)
+
 instance (All Functor cs, MonadError e m) => MonadError e (Node cs m) where
   throwError = lift . throwError
-  catchError node handler = loop node
-    where
-      loop n =
-        Node $
-        case getNode n of
-          ReturnF r -> ReturnF r
-          ConnectF con -> ConnectF (fmap loop con)
-          EffectF eff -> EffectF $ fmap loop eff `catchError` (pure . handler)
+  catchError = liftCatch catchError
 
 instance (All Functor cs, MonadReader r m) => MonadReader r (Node cs m) where
   ask = lift ask
@@ -119,6 +127,18 @@ instance (All Functor cs, MonadState s m) => MonadState s (Node cs m) where
   get = lift get
   put = lift . put
   state = lift . state
+
+instance (All Functor cs, MonadBase b m) => MonadBase b (Node cs m) where
+  liftBase = lift . liftBase
+
+instance (All Functor cs, MonadThrow m) => MonadThrow (Node cs m) where
+  throwM = lift . throwM
+
+instance (All Functor cs, MonadCatch m) => MonadCatch (Node cs m) where
+  catch = liftCatch catch
+
+instance (All Functor cs, MonadResource m) => MonadResource (Node cs m) where
+  liftResourceT = lift . liftResourceT
 
 instance All Functor cs => MFunctor (Node cs) where
   hoist f = unsafeHoist f . observe
