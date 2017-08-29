@@ -19,7 +19,7 @@ module Cobweb.Internal
 import Control.Monad (ap)
 import qualified Control.Monad.Fail as Fail
 import Control.Monad.IO.Class (MonadIO(liftIO))
-import Control.Monad.Morph (MFunctor(hoist))
+import Control.Monad.Morph (MFunctor(hoist), MMonad(embed))
 import Control.Monad.Trans (MonadTrans(lift))
 import Data.Functor.Foldable (Base, Recursive(cata, project))
 import Data.Type.Sum.Lifted (FSum)
@@ -77,11 +77,18 @@ instance (All Functor cs, MonadIO m) => MonadIO (Node cs m) where
 instance (All Functor cs, Fail.MonadFail m) => Fail.MonadFail (Node cs m) where
   fail = lift . Fail.fail
 
--- This instance is "undecidable", but it's fine, since HSum doesn't
--- actually know anything about Node, and expands in functor
--- instances for each interface in the list.
 instance All Functor cs => MFunctor (Node cs) where
   hoist f = unsafeHoist f . observe
+
+instance All Functor cs => MMonad (Node cs) where
+  embed f = loop
+    where
+      loop node =
+        Node $
+        case getNode node of
+          ReturnF r -> ReturnF r
+          ConnectF con -> ConnectF (fmap loop con)
+          EffectF eff -> getNode $ f eff >>= loop
 
 unsafeHoist ::
      (All Functor cs, Functor m)
