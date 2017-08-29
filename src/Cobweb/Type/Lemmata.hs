@@ -1,3 +1,14 @@
+{-|
+Module: Cobweb.Type.Lemmata
+Description: A collection of lemmata used to simplify constraints.
+Copyright: 2017 © Ivan Timokhin
+License: BSD3
+Maintainer: timokhin.iv@gmail.com
+Stability: experimental
+
+A collection of lemmata used to simplify constraints.
+-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE PolyKinds #-}
@@ -24,6 +35,8 @@ import Type.Class.Known (Known(known))
 import Type.Class.Witness ((:-)(Sub), Wit(Wit), Witness((\\)))
 import Type.Family.List (type (++), type (<$>), ListC, Null)
 
+-- | If all constraints in both lists are satisfied, all constraints
+-- in their concatenation are satisfied.
 appendConstraints ::
      forall as bs. (Known Length as, ListC as, ListC bs) :- ListC (as ++ bs)
 appendConstraints = Sub $ loop (known :: Length as) (Proxy :: Proxy bs)
@@ -36,6 +49,7 @@ appendConstraints = Sub $ loop (known :: Length as) (Proxy :: Proxy bs)
     loop LZ _ = Wit
     loop (LS n) p = Wit \\ loop n p
 
+-- | Map distributes over append.
 fmapAppend ::
      forall p1 p2 f as bs.
      p1 f
@@ -50,6 +64,8 @@ fmapAppend _ _ = Sub $ loop (known :: Length as)
     loop LZ = Wit
     loop (LS n) = Wit \\ loop n
 
+-- | Mapping preserves the knowledge of length (and the length itself,
+-- but that is less important).
 fmapLength :: forall p f as. p f -> Known Length as :- Known Length (f <$> as)
 fmapLength _ = Sub $ loop (known :: Length as)
   where
@@ -57,6 +73,8 @@ fmapLength _ = Sub $ loop (known :: Length as)
     loop LZ = Wit
     loop (LS n) = Wit \\ loop n
 
+-- | If all elements of @as@ and all elements of @bs@ satisfy some
+-- constraint, then so do all elements in @as 'Type.Family.List.++' bs@.
 appendAll ::
      forall p1 p2 (f :: k -> Constraint) (as :: [k]) (bs :: [k]).
      p1 f
@@ -71,6 +89,8 @@ appendAll p1 p2 =
                            , ListC (f <$> bs)) :- ListC ((f <$> as) ++ (f <$> bs))) \\
      (fmapLength p1 :: Known Length as :- Known Length (f <$> as)))
 
+-- | If it is possible to remove an element from the list, then the
+-- list cannot be empty.
 iwithoutNonEmpty :: forall n as bs. IWithout n as bs :- (Null as ~ 'False)
 iwithoutNonEmpty =
   Sub $
@@ -78,6 +98,8 @@ iwithoutNonEmpty =
     IRemZ -> Wit
     IRemS _ -> Wit
 
+-- | Removing an element from the list retains the knowledge of list's
+-- length.
 iwithoutRetainsLength ::
      forall n as bs. (IWithout n as bs, Known Length as) :- Known Length bs
 iwithoutRetainsLength =
@@ -87,6 +109,9 @@ iwithoutRetainsLength =
     loop IRemZ l = Wit \\ l
     loop (IRemS r) (LS l) = Wit \\ loop r l
 
+-- | If all of the elements of the list satisfy some constraint, and
+-- one element is removed, remaining elements still satisfy that
+-- constraint.
 iwithoutRetainsAll ::
      forall p f n as bs. p f -> (IWithout n as bs, All f as) :- All f bs
 iwithoutRetainsAll _ = Sub (loop (iwithout :: IRemove n as bs))
