@@ -1,3 +1,42 @@
+{-|
+Module: Cobweb.Internal
+Description: Exposes internal workings of Node
+Copyright: 2017 © Ivan Timokhin
+License: BSD3
+Maintainer: timokhin.iv@gmail.com
+Stability: experimental
+
+Underneath, 'Node' is
+
+  * a free monad over sum of @m@ and all of communication functors,
+    and
+
+  * a fixed point of 'NodeF' functor.
+
+The first point has important implication in that 'Node' violates
+monad transformer laws.  Both of them, actually:
+
+  [@'lift' . 'return' = 'return'@] is violated because the former has
+  an 'EffectF' layer on top, while the latter is purely 'ReturnF';
+
+  [@'lift' (m '>>=' f) = 'lift' m '>>=' ('lift' . f)@] is violated
+  because the former will have one 'EffectF' layer, while the latter
+  two.
+
+Neither of these should be visible without importing this module or
+using 'Recursive' instance of 'Node' (which requires 'NodeF' to be
+used productively anyway), so any visible violation of monad
+transformer laws is still a bug in the library.  However, this
+structural violation means that data types and functions defined in
+this module should be handled with care, as they are potentially
+unsafe.
+
+The motivation for said design primarily stems from the desire to
+avoid ‘dropping’ into the base monad at every step, even when we're
+simply trying to pass around some values through communication
+channels, with no effects from the base monad required.
+-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -35,10 +74,11 @@ import Data.Type.Sum.Lifted (FSum)
 
 import Cobweb.Type.Combinators (All)
 
+-- | The base functor of 'Node'.
 data NodeF (cs :: [* -> *]) (m :: * -> *) r a
-  = ReturnF r
-  | EffectF (m a)
-  | ConnectF (FSum cs a)
+  = ReturnF r -- ^ The computation has completed, producing resulting value.
+  | EffectF (m a) -- ^ Invoke effect in the base monad.
+  | ConnectF (FSum cs a) -- ^ Initiate communcation on one of the channels.
 
 deriving instance
          (All Functor cs, Functor m) => Functor (NodeF cs m r)
@@ -49,6 +89,21 @@ instance (All Functor cs, Functor m) => Bifunctor (NodeF cs m) where
   first _ (ConnectF con) = ConnectF con
   second = fmap
 
+-- | A monad transformer that extends the underlying monad @m@ with a
+-- capacity to communicate on a list of channels @cs@.
+--
+-- Channels are 'Functor's, values of which can be embedded into the
+-- computation.  For example,
+--
+-- @
+-- 'Node' '[(,) a, (->) b, (,) c] m r
+-- @
+--
+-- produces values of type @a@ on the first channel, consumes values
+-- of type @b@ on the second, and produces values of type @c@ on the
+-- third.  "Cobweb.Core" provides aliases for these (most common)
+-- channel types: 'Cobweb.Core.Yielding' for @(,)@, and
+-- 'Cobweb.Core.Awaiting' for @(->)@.
 newtype Node cs m r = Node
   { getNode :: NodeF cs m r (Node cs m r)
   }
@@ -58,6 +113,8 @@ type instance Base (Node cs m r) = NodeF cs m r
 instance (All Functor cs, Functor m) => Recursive (Node cs m r) where
   project = getNode
 
+-- | Convert 'Node' from one set of parameters to another, one level
+-- at a time.
 transform ::
      (All Functor cs, Functor m)
   => (NodeF cs m r (Node cs' m' r') -> NodeF cs' m' r' (Node cs' m' r'))
@@ -88,6 +145,7 @@ instance (All Functor cs, MonadIO m) => MonadIO (Node cs m) where
 instance (All Functor cs, Fail.MonadFail m) => Fail.MonadFail (Node cs m) where
   fail = lift . Fail.fail
 
+-- | Lift a @catch@-like function from the base level to 'Node'.
 liftCatch ::
      (All Functor cs, Applicative m)
   => (m (Node cs m a) -> (e -> m (Node cs m a)) -> m (Node cs m a))
@@ -104,6 +162,9 @@ instance (All Functor cs, MonadError e m) => MonadError e (Node cs m) where
   throwError = lift . throwError
   catchError = liftCatch catchError
 
+-- | This instance is safe only if @'local' f@ in the base monad is a
+-- proper monad morphism (see "Control.Monad.Morph" for details),
+-- which it usually is.
 instance (All Functor cs, MonadReader r m) => MonadReader r (Node cs m) where
   ask = lift ask
   reader = lift . reader
@@ -153,6 +214,19 @@ instance All Functor cs => MMonad (Node cs) where
           ConnectF con -> ConnectF (fmap loop con)
           EffectF eff -> getNode $ f eff >>= loop
 
+-- | Same as 'hoist', but potentially unsafe when the function passed
+-- is /not/ a proper monad morphism.
+--
+-- The problem is that, as mentioned on the top of the module, 'Node'
+-- violates monad transformer laws, and while said violations should
+-- make no visible difference for a proper monad morphism, a general
+-- monad transformation /can/ notice it (e.g. by counting the number
+-- of the times it is called).
+--
+-- This problem is avoided in 'MFunctor' instance of 'Node' by
+-- transforming 'Node' in a ‘canonical’ form via 'observe' prior to
+-- passing it to 'unsafeHoist'; this restores the monad transformer
+-- laws, but incurs a performance penalty.
 unsafeHoist ::
      (All Functor cs, Functor m)
   => (forall x. m x -> n x)
@@ -164,6 +238,8 @@ unsafeHoist f = transform alg
     alg (ConnectF con) = ConnectF con
     alg (EffectF eff) = EffectF (f eff)
 
+-- | Run the 'Node' until it either completes, or initiates
+-- communication on one of its channels.
 inspect :: Monad m => Node cs m r -> m (Either r (FSum cs (Node cs m r)))
 inspect (Node web) =
   case web of
@@ -171,10 +247,13 @@ inspect (Node web) =
     EffectF eff -> eff >>= inspect
     ConnectF con -> pure (Right con)
 
+-- | Build a 'Node' by unfolding from a seed.
 unfold ::
      (Functor m, All Functor cs)
-  => (b -> m (Either r (FSum cs b)))
-  -> b
+  => (b -> m (Either r (FSum cs b))) -- ^ Step function; return value
+     -- of 'Left' implies termination, while 'Right' implies
+     -- communication request.
+  -> b -- ^ Initial seed.
   -> Node cs m r
 unfold step = loop
   where
@@ -182,5 +261,17 @@ unfold step = loop
     loopstep (Left r) = ReturnF r
     loopstep (Right con) = ConnectF (fmap loop con)
 
+-- | Transform 'Node' to a ‘canonical’ form, where monad transformer
+-- laws hold structurally.
+--
+-- The ‘canonical’ form begins with and 'EffectF' layer, then
+-- 'ConnectF' layers interleaved with 'EffectF' layers until, after
+-- the final 'EffectF', comes 'ReturnF'.  This involves complete
+-- reconstruction of the 'Node', and requires ‘dropping’ into the base
+-- monad at every sneeze, so should not be done lightheartedly.
+--
+-- @
+-- 'observe' = 'unfold' 'inspect'
+-- @
 observe :: (Monad m, All Functor cs) => Node cs m r -> Node cs m r
 observe = unfold inspect
