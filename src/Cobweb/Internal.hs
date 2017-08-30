@@ -64,6 +64,7 @@ import Control.Monad.Except (MonadError(catchError, throwError))
 import qualified Control.Monad.Fail as Fail
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad.Morph (MFunctor(hoist), MMonad(embed))
+import Control.Monad.Primitive (PrimMonad(PrimState, primitive))
 import Control.Monad.Reader.Class (MonadReader(ask, local, reader))
 import Control.Monad.State.Class (MonadState(get, put, state))
 import Control.Monad.Trans (MonadTrans(lift))
@@ -200,6 +201,10 @@ instance (All Functor cs, MonadCatch m) => MonadCatch (Node cs m) where
 
 instance (All Functor cs, MonadResource m) => MonadResource (Node cs m) where
   liftResourceT = lift . liftResourceT
+
+instance (All Functor cs, PrimMonad m) => PrimMonad (Node cs m) where
+  type PrimState (Node cs m) = PrimState m
+  primitive = lift . primitive
 
 instance All Functor cs => MFunctor (Node cs) where
   hoist f = unsafeHoist f . observe
