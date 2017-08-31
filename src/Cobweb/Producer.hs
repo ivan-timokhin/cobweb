@@ -13,7 +13,7 @@ each = eachOn i0
 
 for ::
      (All Functor cs, Functor m)
-  => (a -> Node cs m ())
-  -> Producer a m r
+  => Producer a m r
+  -> (a -> Node cs m ())
   -> Node cs m r
 for = forOn i0
