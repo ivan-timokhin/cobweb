@@ -56,6 +56,7 @@ module Cobweb.Core
     -- * Looping over 'Node's
   , forsOn
   , forOn
+  , preforOn
   ) where
 
 import Control.Monad (join)
@@ -404,6 +405,50 @@ forOn ::
   -> (a -> Node cs' m ()) -- ^ Loop body.
   -> Node (cs'' ++ cs') m r
 forOn n node f = forsOn n node (\(a, r) -> r <$ f a)
+
+-- | Loop over a 'Node', replacing each 'awaitOn' the specified
+-- channel by the loop body, which should provide the value asked for.
+--
+-- This is merely a specialisation of 'forsOn' for 'Awaiting'.
+--
+-- ====__Signatures for some specific indices__
+-- @
+-- 'preforOn' 'i0' ::
+--       ( 'Functor' 'm', 'All' 'Functor' cs, 'All' 'Functor' cs'
+--       , 'Known' 'Length' cs)
+--    => 'Node' ('Awaiting' a : cs) m r
+--    -> 'Node' cs' m a
+--    -> 'Node' (cs 'Type.Family.List.++' cs') m r
+--
+-- 'preforOn' 'i1' ::
+--       ( 'Functor' 'm', 'Functor' c0
+--       , 'All' 'Functor' cs, 'All' 'Functor' cs'
+--       , 'Known' 'Length' cs)
+--    => 'Node' (c0 : 'Awaiting' a : cs) m r
+--    -> 'Node' cs' m a
+--    -> 'Node' ((c0 : cs) 'Type.Family.List.++' cs') m r
+--
+-- 'preforOn' 'i2' ::
+--       ( 'Functor' 'm', 'Functor' c0, 'Functor' c1
+--       , 'All' 'Functor' cs, 'All' 'Functor' cs'
+--       , 'Known' 'Length' cs)
+--    => 'Node' (c0 : c1 : 'Awaiting' a : cs) m r
+--    -> 'Node' cs' m a
+--    -> 'Node' ((c0 : c1 : cs) 'Type.Family.List.++' cs') m r
+-- @
+preforOn ::
+     ( Known Length cs''
+     , IWithout n cs cs''
+     , Functor m
+     , All Functor cs'
+     , All Functor cs
+     )
+  => IIndex n cs (Awaiting a) -- ^ A channel over which to loop.
+  -> Node cs m r -- ^ A receiver of values.
+  -> Node cs' m a -- ^ A provider of values, run once for each
+                  -- 'awaitOn'.
+  -> Node (cs'' ++ cs') m r
+preforOn n node body = forsOn n node (<$> body)
 
 -- $indices
 --
