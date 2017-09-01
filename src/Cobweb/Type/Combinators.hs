@@ -47,8 +47,10 @@ module Cobweb.Type.Combinators
     -- * Replacing elements
   , IReplace(IRepZ, IRepS)
   , IReplaced(ireplace)
+  , replaceIdx
     -- * Manipulating 'FSum'
   , fdecompIdx
+  , fdecompReplaceIdx
   , freplaceIdx
   , finjectIdx
   , finl
@@ -57,7 +59,8 @@ module Cobweb.Type.Combinators
     -- * Type synonyms
   , All
   ) where
-import Data.Bifunctor (bimap)
+
+import Data.Bifunctor (first)
 import Data.Type.Index (Index(IS, IZ))
 import Data.Type.Length (Length(LS, LZ))
 import Data.Type.Sum.Lifted (FSum(FInL, FInR), injectFSum)
@@ -255,6 +258,11 @@ instance Witness ØC (IReplaced n as b bs) (IReplace n as b bs) where
   f \\ IRepZ = f
   f \\ IRepS r = f \\ r
 
+-- | Produce an index of a replaced element in the new list.
+replaceIdx :: IReplace n as b bs -> IIndex n bs b
+replaceIdx IRepZ = IIZ
+replaceIdx (IRepS r) = IIS (replaceIdx r)
+
 -- | Decompose the sum into either an element at the specific index,
 -- or some element from the rest of the sum.
 --
@@ -288,7 +296,45 @@ fdecompIdx = loop iwithout
     loop _ IIZ (FInL f) = Right f
     loop IRemZ IIZ (FInR g) = Left g
     loop (IRemS _) (IIS _) (FInL g) = Left (FInL g)
-    loop (IRemS r) (IIS n) (FInR fs) = bimap FInR id (loop r n fs)
+    loop (IRemS r) (IIS n) (FInR fs) = first FInR (loop r n fs)
+
+-- | Decompose the sum like 'fdecompIdx', but instead of the sum
+-- /without/ the requested element, return the sum with the requested
+-- element /replaced/ by an arbitrary other in the even of mismatch.
+--
+-- Specialised for different index values, the type would look like
+-- this:
+--
+-- @
+-- 'fdecompReplaceIdx' 'i0' ::
+--    p g -> 'FSum' (f : fs) a -> 'Either' ('FSum' (g : fs) a) (f a)
+--
+-- 'fdecompReplaceIdx' 'i1' ::
+--    p g -> 'FSum' (f0 : f : fs) a -> 'Either' ('FSum' (f0 : g : fs) a) (f a)
+--
+-- 'fdecompReplaceIdx' 'i2' ::
+--    p g -> 'FSum' (f0 : f1 : f : fs) a -> 'Either' ('FSum' (f0 : f1 : g : fs) a) (f a)
+-- @
+--
+-- And so on.
+fdecompReplaceIdx ::
+     IReplaced n fs g gs
+  => IIndex n fs f
+  -> p g
+  -> FSum fs a
+  -> Either (FSum gs a) (f a)
+fdecompReplaceIdx = loop ireplace
+  where
+    loop ::
+         IReplace n fs g gs
+      -> IIndex n fs f
+      -> p g
+      -> FSum fs a
+      -> Either (FSum gs a) (f a)
+    loop _ IIZ _ (FInL f) = Right f
+    loop IRepZ IIZ _ (FInR g) = Left (FInR g)
+    loop (IRepS _) (IIS _) _ (FInL g) = Left (FInL g)
+    loop (IRepS r) (IIS n) p (FInR fs) = first FInR (loop r n p fs)
 
 -- | Replace one functor in the 'FSum' by another by transforming the
 -- old one into a new one.
@@ -406,7 +452,6 @@ finr _ = loop (known :: Length fs)
 --
 -- so if such errors arise, a likely cause is trying to 'fuse' a term
 -- with itself.
-
 fuse ::
      forall n m fs gs f a. (IWithout n fs gs, NatEq n m ~ 'False)
   => IIndex n fs f

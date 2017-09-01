@@ -14,6 +14,7 @@ This module provides the core functionality of the library: core type
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeOperators #-}
 
 module Cobweb.Core
@@ -51,8 +52,12 @@ module Cobweb.Core
     -- * Maps
   , mapsAll
   , mapsOn
+  , mapsOnM
+  , mapsOnM'
   , mapOn
+  , mapOnM
   , premapOn
+  , premapOnM
     -- * Looping over 'Node's
   , forsOn
   , forOn
@@ -73,10 +78,11 @@ import Type.Family.List (type (++))
 
 import Cobweb.Internal
        (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF), inspect,
-        transform, unfold)
+        transform, transformCons, unfold)
 import Cobweb.Type.Combinators
-       (All, IIndex, IReplaced, IWithout, fdecompIdx, finjectIdx, finl,
-        finr, freplaceIdx, i0, i1, i10, i2, i3, i4, i5, i6, i7, i8, i9)
+       (All, IIndex, IReplace, IReplaced, IWithout, fdecompIdx,
+        fdecompReplaceIdx, finjectIdx, finl, finr, freplaceIdx, i0, i1,
+        i10, i2, i3, i4, i5, i6, i7, i8, i9, ireplace, replaceIdx)
 import Cobweb.Type.Lemmata (appendAll, iwithoutRetainsAll)
 
 -- | A node with no channels, isomorphic to an effect in the base monad.
@@ -85,7 +91,7 @@ import Cobweb.Type.Lemmata (appendAll, iwithoutRetainsAll)
 type Effect = Node '[]
 
 -- | A node with only one channel.
-type Leaf c = Node '[c]
+type Leaf c = Node '[ c]
 
 -- | A channel type of @'Yielding' a@ implies that a 'Node' is
 -- producing values of type @a@ on this channel.
@@ -176,11 +182,7 @@ mapsAll ::
      -- on old channels into communications on new ones.
   -> Node cs m r -- ^ Node with an old list of channels.
   -> Node cs' m r -- ^ Same node, but with transformed communications.
-mapsAll f = transform alg
-  where
-    alg (ReturnF r) = ReturnF r
-    alg (EffectF eff) = EffectF eff
-    alg (ConnectF con) = ConnectF (f con)
+mapsAll = transformCons
 
 -- | Transform a single channel of a 'Node' via a natural transformation.
 --
@@ -207,12 +209,90 @@ mapsAll f = transform alg
 mapsOn ::
      (Functor m, All Functor cs, IReplaced n cs c' cs')
   => IIndex n cs c -- ^ An index of a channel to be replaced.
-  -> (forall x. c x -> c' x)  -- ^ A natural transformation to apply
+  -> (forall x. c x -> c' x) -- ^ A natural transformation to apply
      -- to the channel.
   -> Node cs m r -- ^ A 'Node' with an old channel.
   -> Node cs' m r -- ^ The same 'Node', but the channel in question is
      -- replaced by a new one.
 mapsOn n f = mapsAll (freplaceIdx n f)
+
+-- | Transform a single channel of a 'Node', with possible effects in
+-- the base monad outside of a new channel functor.
+--
+-- ====__Signatures for some specific indices__
+-- @
+-- 'mapsOnM' 'i0' ::
+--       ('Functor' m, 'Functor' c, 'All' 'Functor' cs)
+--    => (forall x. c x -> m (c' x))
+--    -> 'Node' (c : cs) m r
+--    -> 'Node' (c' : cs) m r
+--
+-- 'mapsOnM' 'i1' ::
+--       ('Functor' m, 'Functor' c0, 'Functor' c1, 'All' 'Functor' cs)
+--    => (forall x. c1 x -> m (c' x))
+--    -> 'Node' (c0 : c1 : cs) m r
+--    -> 'Node' (c0 : c' : cs) m r
+--
+-- 'mapsOnM' 'i2' ::
+--       ('Functor' m, 'Functor' c0, 'Functor' c1, 'Functor' c2, 'All' 'Functor' cs)
+--    => (forall x. c2 x -> m (c' x))
+--    -> 'Node' (c0 : c1 : c2 : cs) m r
+--    -> 'Node' (c0 : c1 : c' : cs) m r
+-- @
+mapsOnM ::
+     forall m cs n c' cs' r c.
+     (Functor m, All Functor cs, IReplaced n cs c' cs')
+  => IIndex n cs c  -- ^ An index of a channel to be replaced.
+  -> (forall x. c x -> m (c' x)) -- ^ A natural transformation to
+     -- apply to the channel.
+  -> Node cs m r
+  -> Node cs' m r
+mapsOnM n f = transform alg
+  where
+    alg (ReturnF r) = ReturnF r
+    alg (EffectF eff) = EffectF eff
+    alg (ConnectF con) =
+      case fdecompReplaceIdx n (Proxy :: Proxy c') con of
+        Right c ->
+          EffectF
+            (fmap
+               (Node .
+                ConnectF .
+                finjectIdx (replaceIdx (ireplace :: IReplace n cs c' cs')))
+               (f c))
+        Left c -> ConnectF c
+
+-- | Transform a single channel of a 'Node', with possible monadic
+-- effects inside a new channel functor.
+--
+-- ====__Signatures for some specific indices__
+-- @
+-- 'mapsOnM'' 'i0' ::
+--       ('Functor' m, 'Functor' c, 'All' 'Functor' cs)
+--    => (forall x. c x -> c' (m x))
+--    -> 'Node' (c : cs) m r
+--    -> 'Node' (c' : cs) m r
+--
+-- 'mapsOnM'' 'i1' ::
+--       ('Functor' m, 'Functor' c0, 'Functor' c1, 'All' 'Functor' cs)
+--    => (forall x. c1 x -> c' (m x))
+--    -> 'Node' (c0 : c1 : cs) m r
+--    -> 'Node' (c0 : c' : cs) m r
+--
+-- 'mapsOnM'' 'i2' ::
+--       ('Functor' m, 'Functor' c0, 'Functor' c1, 'Functor' c2, 'All' 'Functor' cs)
+--    => (forall x. c2 x -> c' (m x))
+--    -> 'Node' (c0 : c1 : c2 : cs) m r
+--    -> 'Node' (c0 : c1 : c' : cs) m r
+-- @
+mapsOnM' ::
+     (Functor m, All Functor cs, IReplaced n cs c' cs', Functor c')
+  => IIndex n cs c -- ^ An index of a channel to be replaced.
+  -> (forall x. c x -> c' (m x)) -- ^ A natural transformation to
+     -- apply to the channel.
+  -> Node cs m r
+  -> Node cs' m r
+mapsOnM' n f = transformCons (freplaceIdx n (fmap (Node . EffectF) . f))
 
 -- | Transform an outgoing stream of values on a specified channel.
 --
@@ -247,6 +327,37 @@ mapOn ::
   -> Node cs m r -- ^ An old 'Node'.
   -> Node cs' m r -- ^ Same node, but with the channel replaced.
 mapOn n f = mapsOn n (first f)
+
+-- | Transform an outgoing stream of values, with possible effects in
+-- the base monad along the way.
+--
+-- ====__Signatures for some specific indices__
+-- @
+-- 'mapOnM' 'i0' ::
+--      ('Functor' m, 'All' 'Functor' cs)
+--   => (a -> m b)
+--   -> 'Node' ('Yielding' a : cs) m r
+--   -> 'Node' ('Yielding' b : cs) m r
+--
+-- 'mapOnM' 'i1' ::
+--      ('Functor' m, 'Functor' c0, 'All' 'Functor' cs)
+--   => (a -> m b)
+--   -> 'Node' (c0 : 'Yielding' a : cs) m r
+--   -> 'Node' (c0 : 'Yielding' b : cs) m r
+--
+-- 'mapOnM' 'i2' ::
+--      ('Functor' m, 'Functor' c0, 'Functor' c1, 'All' 'Functor' cs)
+--   => (a -> m b)
+--   -> 'Node' (c0 : c1 : 'Yielding' a : cs) m r
+--   -> 'Node' (c0 : c1 : 'Yielding' b : cs) m r
+-- @
+mapOnM ::
+     (Functor m, All Functor cs, IReplaced n cs (Yielding b) cs')
+  => IIndex n cs (Yielding a) -- ^ An index of a channel to be mapped over.
+  -> (a -> m b) -- ^ A function to apply to outgoing elements.
+  -> Node cs m r -- ^ An old 'Node'.
+  -> Node cs' m r -- ^ Same node, but with channel replaced.
+mapOnM n f = mapsOnM n (\(a, x) -> fmap (, x) (f a))
 
 -- | Transform an incoming stream of values on a specified channel.
 --
@@ -283,6 +394,39 @@ premapOn ::
   -> Node cs m r -- ^ Original 'Node'.
   -> Node cs' m r -- ^ Same 'Node', but with the channel replaced.
 premapOn n f = mapsOn n (. f)
+
+-- | Transform an incoming stream of values, with some effects in the
+-- base monad along the way.
+--
+-- ====__Signatures for some specific indices__
+-- @
+-- 'premapOnM' 'i0' ::
+--      ('Functor' m, 'All' 'Functor' cs)
+--   => (b -> m a)
+--   -> 'Node' ('Awaiting' a : cs) m r
+--   -> 'Node' ('Awaiting' b : cs) m r
+--
+-- 'premapOnM' 'i1' ::
+--      ('Functor' m, 'Functor' c0, 'All' 'Functor' cs)
+--   => (b -> m a)
+--   -> 'Node' (c0 : 'Awaiting' a : cs) m r
+--   -> 'Node' (c0 : 'Awaiting' b : cs) m r
+--
+-- 'premapOnM' 'i2' ::
+--      ('Functor' m, 'Functor' c0, 'Functor' c1, 'All' 'Functor' cs)
+--   => (b -> m a)
+--   -> 'Node' (c0 : c1 : 'Awaiting' a : cs) m r
+--   -> 'Node' (c0 : c1 : 'Awaiting' b : cs) m r
+-- @
+premapOnM ::
+     (Applicative m, All Functor cs, IReplaced n cs (Awaiting b) cs')
+  => IIndex n cs (Awaiting a) -- ^ Index of the channel to be mapped
+                              -- over.
+  -> (b -> m a) -- ^ The function to transform values received by a new
+     -- 'Node' into the ones requested by the old one.
+  -> Node cs m r -- ^ Original 'Node'.
+  -> Node cs' m r -- ^ Same 'Node', but with the channel replaced.
+premapOnM n f = mapsOnM' n (\g -> fmap g . f)
 
 -- | Substitute each attempt to communicate on a given channel with a
 -- computation with a different list of channels.

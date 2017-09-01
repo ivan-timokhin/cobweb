@@ -52,6 +52,7 @@ module Cobweb.Internal
   , Node(Node, getNode)
   , transform
   , unsafeHoist
+  , transformCons
   , inspect
   , unfold
   , observe
@@ -242,6 +243,23 @@ unsafeHoist f = transform alg
     alg (ReturnF r) = ReturnF r
     alg (ConnectF con) = ConnectF con
     alg (EffectF eff) = EffectF (f eff)
+
+-- | Transform a full communication stack of a 'Node'.
+--
+-- Due to type-specialised nature of the transformation function, this
+-- function is more flexible (but also less safe!) than the similar
+-- 'Cobweb.Core.mapsAll'.
+transformCons ::
+     (Functor m, All Functor cs)
+  => (FSum cs (Node cs' m r) -> FSum cs' (Node cs' m r))
+     -- ^ Transform each communication request.
+  -> Node cs m r
+  -> Node cs' m r
+transformCons f = transform alg
+  where
+    alg (ReturnF r) = ReturnF r
+    alg (ConnectF con) = ConnectF (f con)
+    alg (EffectF eff) = EffectF eff
 
 -- | Run the 'Node' until it either completes, or initiates
 -- communication on one of its channels.
