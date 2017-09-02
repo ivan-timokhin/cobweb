@@ -49,6 +49,7 @@ module Cobweb.Type.Combinators
   , IReplaced(ireplace)
   , replaceIdx
     -- * Manipulating 'FSum'
+  , fsumOnly
   , fdecompIdx
   , fdecompReplaceIdx
   , freplaceIdx
@@ -63,7 +64,8 @@ module Cobweb.Type.Combinators
 import Data.Bifunctor (first)
 import Data.Type.Index (Index(IS, IZ))
 import Data.Type.Length (Length(LS, LZ))
-import Data.Type.Sum.Lifted (FSum(FInL, FInR), injectFSum)
+import Data.Type.Sum.Lifted (FSum(FInL, FInR), injectFSum, nilFSum)
+import Data.Void (absurd)
 import Type.Class.Known (Known(known))
 import Type.Class.Witness (Witness((\\)))
 import Type.Family.Constraint (ØC)
@@ -262,6 +264,11 @@ instance Witness ØC (IReplaced n as b bs) (IReplace n as b bs) where
 replaceIdx :: IReplace n as b bs -> IIndex n bs b
 replaceIdx IRepZ = IIZ
 replaceIdx (IRepS r) = IIS (replaceIdx r)
+
+-- | Extract the only term of a single-term sum.
+fsumOnly :: FSum '[f] a -> f a
+fsumOnly (FInL f) = f
+fsumOnly (FInR f) = absurd . nilFSum $ f
 
 -- | Decompose the sum into either an element at the specific index,
 -- or some element from the rest of the sum.

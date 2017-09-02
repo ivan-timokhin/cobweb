@@ -10,6 +10,7 @@ A collection of lemmata used to simplify constraints.
 -}
 {-# OPTIONS_HADDOCK show-extensions #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE RankNTypes #-}
@@ -24,10 +25,12 @@ module Cobweb.Type.Lemmata
   , iwithoutNonEmpty
   , iwithoutRetainsLength
   , iwithoutRetainsAll
+  , ireplacedRetainsAll
   ) where
 
 import Cobweb.Type.Combinators
-       (All, IRemove(IRemS, IRemZ), IWithout, iwithout)
+       (All, IRemove(IRemS, IRemZ), IReplace(IRepS, IRepZ),
+        IReplaced(ireplace), IWithout, iwithout)
 import Data.Kind (Constraint)
 import Data.Proxy (Proxy(Proxy))
 import Data.Type.Length (Length(LS, LZ))
@@ -119,3 +122,16 @@ iwithoutRetainsAll _ = Sub (loop (iwithout :: IRemove n as bs))
     loop :: All f as' => IRemove n' as' bs' -> Wit (All f bs')
     loop IRemZ = Wit
     loop (IRemS r) = Wit \\ loop r
+
+-- | If all of the elements of the list satisfy some constraint, and
+-- one of them is replaced by another element that /also/ satisfies
+-- that constraint, all elements of the resulting list satisfy that
+-- constraint.
+ireplacedRetainsAll ::
+     forall f n as b bs.
+  (IReplaced n as b bs, All f as, f b) :- All f bs
+ireplacedRetainsAll = Sub (loop (ireplace :: IReplace n as b bs))
+  where
+    loop :: (f b, All f as') => IReplace n' as' b bs' -> Wit (All f bs')
+    loop IRepZ = Wit
+    loop (IRepS r) = Wit \\ loop r
