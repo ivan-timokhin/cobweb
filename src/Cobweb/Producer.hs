@@ -29,7 +29,7 @@ import Cobweb.Type.Combinators
 -- | A 'Node' that only yields values on its sole open channel.
 type Producer a = Leaf (Yielding a)
 
--- | Yield each value in the foldable container.
+-- | Yield each value in order.
 each :: (Foldable f, Functor m) => f a -> Producer a m ()
 each = eachOn i0
 
