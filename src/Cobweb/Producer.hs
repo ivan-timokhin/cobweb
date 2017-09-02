@@ -17,11 +17,12 @@ counterparts in "Cobweb.Core"; these are specialised for 'Producer's.
 module Cobweb.Producer
   ( Producer
   , each
+  , mapP
   , for
   , produceOn
   ) where
 
-import Cobweb.Core (mapsAll, Leaf, Yielding, eachOn, forOn)
+import Cobweb.Core (mapOn, mapsAll, Leaf, Yielding, eachOn, forOn)
 import Cobweb.Internal (Node)
 import Cobweb.Type.Combinators
        (All, IIndex, finjectIdx, fsumOnly, i0)
@@ -32,6 +33,10 @@ type Producer a = Leaf (Yielding a)
 -- | Yield each value in order.
 each :: (Foldable f, Functor m) => f a -> Producer a m ()
 each = eachOn i0
+
+-- | Apply a function to all yielded values.
+mapP :: Functor m => (a -> b) -> Producer a m () -> Producer b m ()
+mapP = mapOn i0
 
 -- | Loop over a producer.
 for ::
