@@ -23,13 +23,11 @@ monad transformer laws.  Both of them, actually:
   because the former will have one 'EffectF' layer, while the latter
   two.
 
-Neither of these should be visible without importing this module or
-using 'Recursive' instance of 'Node' (which requires 'NodeF' to be
-used productively anyway), so any visible violation of monad
-transformer laws is still a bug in the library.  However, this
-structural violation means that data types and functions defined in
-this module should be handled with care, as they are potentially
-unsafe.
+Neither of these should be visible without importing this module so
+any visible violation of monad transformer laws is still a bug in the
+library.  However, this structural violation means that data types and
+functions defined in this module should be handled with care, as they
+are potentially unsafe.
 
 The motivation for said design primarily stems from the desire to
 avoid ‘dropping’ into the base monad at every step, even when we're
@@ -50,6 +48,7 @@ channels, with no effects from the base monad required.
 module Cobweb.Internal
   ( NodeF(ReturnF, EffectF, ConnectF)
   , Node(Node, getNode)
+  , cata
   , transform
   , unsafeHoist
   , transformCons
@@ -71,7 +70,6 @@ import Control.Monad.State.Class (MonadState(get, put, state))
 import Control.Monad.Trans (MonadTrans(lift))
 import Control.Monad.Trans.Resource (MonadResource(liftResourceT))
 import Data.Bifunctor (Bifunctor(first, second))
-import Data.Functor.Foldable (Base, Recursive(cata, project))
 import Data.Type.Sum.Lifted (FSum)
 
 import Cobweb.Type.Combinators (All)
@@ -110,10 +108,11 @@ newtype Node cs m r = Node
   { getNode :: NodeF cs m r (Node cs m r)
   }
 
-type instance Base (Node cs m r) = NodeF cs m r
-
-instance (All Functor cs, Functor m) => Recursive (Node cs m r) where
-  project = getNode
+-- | Fold a 'Node'
+cata :: (All Functor cs, Functor m) => (NodeF cs m r a -> a) -> Node cs m r -> a
+cata alg = c
+  where
+    c = alg . fmap c . getNode
 
 -- | Convert 'Node' from one set of parameters to another, one level
 -- at a time.

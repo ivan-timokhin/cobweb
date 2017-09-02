@@ -37,7 +37,6 @@ library
                      , Cobweb.Trans
   build-depends:       base >= 4.7 && < 5
                      , mtl
-                     , recursion-schemes
                      , mmorph
                      , type-combinators
                      , transformers-base

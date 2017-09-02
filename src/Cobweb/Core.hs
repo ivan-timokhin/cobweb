@@ -70,7 +70,6 @@ module Cobweb.Core
 import Control.Monad (join)
 import Data.Bifunctor (first)
 import Data.Foldable (traverse_)
-import Data.Functor.Foldable (Recursive(cata))
 import Data.Proxy (Proxy(Proxy))
 import Data.Type.Length (Length)
 import Data.Type.Sum.Lifted (FSum, nilFSum)
@@ -80,8 +79,8 @@ import Type.Class.Witness ((:-), Witness((\\)))
 import Type.Family.List (type (++))
 
 import Cobweb.Internal
-       (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF), inspect,
-        transform, transformCons, unfold)
+       (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF), cata,
+        inspect, transform, transformCons, unfold)
 import Cobweb.Type.Combinators
        (All, IIndex, IReplace, IReplaced, IWithout, fdecompIdx,
         fdecompReplaceIdx, finjectIdx, finl, finr, freplaceIdx, fsumOnly,

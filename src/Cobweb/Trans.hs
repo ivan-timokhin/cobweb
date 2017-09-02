@@ -5,10 +5,10 @@ module Cobweb.Trans where
 import Control.Monad (join)
 import Control.Monad.Morph (MFunctor(hoist))
 import Control.Monad.Trans (MonadTrans(lift))
-import Data.Functor.Foldable (cata)
 
 import Cobweb.Core (connects)
-import Cobweb.Internal (Node, NodeF(ConnectF, EffectF, ReturnF))
+import Cobweb.Internal
+       (Node, NodeF(ConnectF, EffectF, ReturnF), cata)
 import Cobweb.Type.Combinators (All)
 
 -- FIXME figure out what it does and, depending on results,
