@@ -54,6 +54,7 @@ module Cobweb.Core
   , yieldOn
   , eachOn
   , awaitOn
+  , leafOn
     -- * Maps
   , mapsAll
   , mapsOn
@@ -199,6 +200,19 @@ eachOn n = traverse_ (yieldOn n)
 -- @
 awaitOn :: IIndex n cs (Awaiting a) -> Node cs m a
 awaitOn n = connectsOn n id
+
+-- | Run an entire 'Leaf' within a bigger (in terms of channels)
+-- 'Node', by identifying 'Leaf's sole channel with one of the
+-- 'Node'\'s channels.
+--
+-- ====__Signatures for some specific indices__
+-- @
+-- 'leafOn' 'i0' :: 'Functor' m => 'Leaf' c0 m r -> 'Node' (c0 : cs) m r
+-- 'leafOn' 'i1' :: 'Functor' m => 'Leaf' c1 m r -> 'Node' (c0 : c1 : cs) m r
+-- 'leafOn' 'i2' :: 'Functor' m => 'Leaf' c2 m r -> 'Node' (c0 : c1 : c2 : cs) m r
+-- @
+leafOn :: (Functor m, Functor c) => IIndex n cs c -> Leaf c m r -> Node cs m r
+leafOn n = mapsAll (finjectIdx n . fsumOnly)
 
 -- | Transform entire list of channels of a 'Node' via a natural
 -- transformation of their 'FSum'.

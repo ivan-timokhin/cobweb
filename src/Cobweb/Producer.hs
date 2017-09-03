@@ -32,11 +32,10 @@ import Type.Class.Known (Known)
 import Type.Family.List (Last, Null)
 
 import Cobweb.Core
-       (Producer, Yielding, eachOn, forOn, inspectLeaf, mapOn, mapsAll,
+       (Producer, Yielding, eachOn, forOn, inspectLeaf, leafOn, mapOn,
         yieldOn)
 import Cobweb.Internal (Node)
-import Cobweb.Type.Combinators
-       (All, IIndex, finjectIdx, fsumOnly, i0, lastIndex)
+import Cobweb.Type.Combinators (All, IIndex, i0, lastIndex)
 
 -- | Produce a value on the last channel of a 'Node'.
 --
@@ -115,4 +114,4 @@ produceOn ::
   => IIndex n cs (Yielding a) -- ^ A channel to attach to.
   -> Producer a m r
   -> Node cs m r
-produceOn n = mapsAll (finjectIdx n . fsumOnly)
+produceOn = leafOn
