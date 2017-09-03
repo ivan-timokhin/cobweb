@@ -13,22 +13,56 @@ counterparts in "Cobweb.Core"; these are specialised for 'Producer's.
 -}
 {-# OPTIONS_HADDOCK show-extensions #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Cobweb.Producer
   ( Producer
+  , yield
   , each
   , mapP
   , for
   , produceOn
   ) where
 
-import Cobweb.Core (mapOn, mapsAll, Leaf, Yielding, eachOn, forOn)
+import Data.Type.Length (Length)
+import Type.Class.Known (Known)
+import Type.Family.List (Last, Null)
+
+import Cobweb.Core
+       (Leaf, Yielding, eachOn, forOn, mapOn, mapsAll, yieldOn)
 import Cobweb.Internal (Node)
 import Cobweb.Type.Combinators
-       (All, IIndex, finjectIdx, fsumOnly, i0)
+       (All, IIndex, finjectIdx, fsumOnly, i0, lastIndex)
 
 -- | A 'Node' that only yields values on its sole open channel.
 type Producer a = Leaf (Yielding a)
+
+-- | Produce a value on the last channel of a 'Node'.
+--
+-- This function can be thought of as having any of the following types:
+--
+-- @
+-- 'yield' :: 'Functor' m => b -> 'Producer' b m ()
+-- 'yield' :: 'Functor' m => b -> 'Cobweb.Pipe.Pipe' a b m ()
+-- @
+--
+-- ====__What are all these constraints?__
+--
+--    [@'Known' 'Length' cs@] This is mostly an implementation detail;
+--        while it means what it says, all actual lists have known
+--        length, so this shouldn't be an issue.
+--
+--    [@'Last' cs ~ 'Yielding' a@] The last channel in the list (the
+--        one we'll be using) is @'Yielding' a@, i.e. produces values
+--        of type @a@.
+--
+--    [@'Null' cs ~ ''False'@] The channel list should not be empty.
+yield ::
+     (Known Length cs, Last cs ~ Yielding a, Null cs ~ 'False)
+  => a
+  -> Node cs m ()
+yield = yieldOn lastIndex
 
 -- | Yield each value in order.
 each :: (Foldable f, Functor m) => f a -> Producer a m ()
