@@ -22,6 +22,7 @@ module Cobweb.Producer
   , each
   , mapP
   , for
+  , next
   , produceOn
   ) where
 
@@ -30,7 +31,8 @@ import Type.Class.Known (Known)
 import Type.Family.List (Last, Null)
 
 import Cobweb.Core
-       (Leaf, Yielding, eachOn, forOn, mapOn, mapsAll, yieldOn)
+       (Leaf, Yielding, eachOn, forOn, inspectLeaf, mapOn, mapsAll,
+        yieldOn)
 import Cobweb.Internal (Node)
 import Cobweb.Type.Combinators
        (All, IIndex, finjectIdx, fsumOnly, i0, lastIndex)
@@ -79,6 +81,16 @@ for ::
   -> (a -> Node cs m ()) -- ^ Loop body.
   -> Node cs m r
 for = forOn i0
+
+-- | Run a 'Producer' until it either terminates, or produces a
+-- value.  In the latter case, returns the value along with the rest
+-- of the 'Producer'
+--
+-- @
+-- 'next' = 'inspectLeaf'
+-- @
+next :: Monad m => Producer a m r -> m (Either r (a, Producer a m r))
+next = inspectLeaf
 
 -- | Embed a 'Producer' into a larger 'Node', by identifying its sole
 -- output channel with a matching channel in the outer 'Node'.
