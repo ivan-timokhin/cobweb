@@ -42,8 +42,8 @@ import Cobweb.Type.Combinators (All, IIndex, i0, lastIndex)
 -- This function can be thought of as having any of the following types:
 --
 -- @
--- 'yield' :: 'Functor' m => b -> 'Producer' b m ()
--- 'yield' :: 'Functor' m => b -> 'Cobweb.Pipe.Pipe' a b m ()
+-- 'yield' :: b -> 'Producer' b m ()
+-- 'yield' :: b -> 'Cobweb.Pipe.Pipe' a b m ()
 -- @
 --
 -- ====__What are all these constraints?__
