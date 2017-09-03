@@ -203,7 +203,7 @@ awaitOn n = connectsOn n id
 
 -- | Run an entire 'Leaf' within a bigger (in terms of channels)
 -- 'Node', by identifying 'Leaf's sole channel with one of the
--- 'Node'\'s channels.
+-- 'Node' channels.
 --
 -- ====__Signatures for some specific indices__
 -- @
