@@ -22,9 +22,13 @@ module Cobweb.Core
     -- * Types
     Node
   , Effect
+  , Tube
   , Leaf
   , Yielding
   , Awaiting
+  , Pipe
+  , Producer
+  , Consumer
     -- * Running 'Node'
   , run
   , inspect
@@ -93,20 +97,34 @@ import Cobweb.Type.Lemmata (ireplacedRetainsAll, appendAll, iwithoutRetainsAll)
 -- __See also__: 'run'
 type Effect = Node '[]
 
+-- | A node with two channels (typically, one for input and one for
+-- output).
+type Tube i o = Node '[i, o]
+
 -- | A node with only one channel.
 type Leaf c = Node '[ c]
 
 -- | A channel type of @'Yielding' a@ implies that a 'Node' is
 -- producing values of type @a@ on this channel.
 --
--- __See also__: 'yieldOn', "Cobweb.Producer"
+-- __See also__: 'yieldOn', 'Producer'
 type Yielding = (,)
 
 -- | A channel type of @'Awaiting' a@ implies that a 'Node' is
 -- receiving values of type @a@ on this channel.
 --
--- __See also__: 'awaitOn', "Cobweb.Consumer"
+-- __See also__: 'awaitOn', 'Consumer'
 type Awaiting = (->)
+
+-- | A 'Node' that receives values on its first channel, and produces
+-- values on the second one.
+type Pipe a b = Tube (Awaiting a) (Yielding b)
+
+-- | A 'Node' that only yields values on its sole open channel.
+type Producer a = Leaf (Yielding a)
+
+-- | A 'Node' that only receives values on its sole open channel.
+type Consumer a = Leaf (Awaiting a)
 
 -- | Run a node with no open channels in the base monad.
 run :: Monad m => Effect m r -> m r

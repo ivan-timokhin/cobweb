@@ -18,6 +18,7 @@ counterparts in "Cobweb.Core"; these are specialised for 'Producer's.
 
 module Cobweb.Producer
   ( Producer
+  , Yielding
   , yield
   , each
   , mapP
@@ -31,14 +32,11 @@ import Type.Class.Known (Known)
 import Type.Family.List (Last, Null)
 
 import Cobweb.Core
-       (Leaf, Yielding, eachOn, forOn, inspectLeaf, mapOn, mapsAll,
+       (Producer, Yielding, eachOn, forOn, inspectLeaf, mapOn, mapsAll,
         yieldOn)
 import Cobweb.Internal (Node)
 import Cobweb.Type.Combinators
        (All, IIndex, finjectIdx, fsumOnly, i0, lastIndex)
-
--- | A 'Node' that only yields values on its sole open channel.
-type Producer a = Leaf (Yielding a)
 
 -- | Produce a value on the last channel of a 'Node'.
 --
