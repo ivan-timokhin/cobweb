@@ -28,6 +28,7 @@ module Cobweb.Core
     -- * Running 'Node'
   , run
   , inspect
+  , inspectLeaf
     -- * Constructing 'Node'
   , unfold
     -- * Common channel indices
@@ -68,7 +69,7 @@ module Cobweb.Core
   ) where
 
 import Control.Monad (join)
-import Data.Bifunctor (first)
+import Data.Bifunctor (second, first)
 import Data.Foldable (traverse_)
 import Data.Proxy (Proxy(Proxy))
 import Data.Type.Length (Length)
@@ -114,6 +115,11 @@ run = cata alg
     alg (ReturnF r) = pure r
     alg (EffectF eff) = join eff
     alg (ConnectF con) = absurd (nilFSum con)
+
+-- | 'inspect' a 'Leaf'.
+inspectLeaf ::
+     (Monad m, Functor c) => Leaf c m r -> m (Either r (c (Leaf c m r)))
+inspectLeaf = fmap (second fsumOnly) . inspect
 
 -- | Initiate a connection on /some/ channel.
 --
