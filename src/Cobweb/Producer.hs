@@ -21,12 +21,15 @@ module Cobweb.Producer
   , Yielding
   , yield
   , each
+  , generate
   , mapP
   , for
   , next
   , produceOn
   ) where
 
+import Control.Monad (forever)
+import Control.Monad.Trans (lift)
 import Data.Type.Length (Length)
 import Type.Class.Known (Known)
 import Type.Family.List (Last, Null)
@@ -66,6 +69,14 @@ yield = yieldOn lastIndex
 -- | Yield each value in order.
 each :: (Foldable f, Functor m) => f a -> Producer a m ()
 each = eachOn i0
+
+-- | Generate an infinite stream of values by repeatedly running the
+-- provided action.
+generate :: Monad m => m a -> Producer a m r
+generate source =
+  forever $ do
+    a <- lift source
+    yield a
 
 -- | Apply a function to all yielded values.
 mapP :: Functor m => (a -> b) -> Producer a m () -> Producer b m ()

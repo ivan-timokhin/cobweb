@@ -19,11 +19,16 @@ module Cobweb.Consumer
   ( Consumer
   , Awaiting
   , await
+  , drain
+  , discard
   , premap
   , prefor
   , nextRequest
   , consumeOn
   ) where
+
+import Control.Monad (forever)
+import Control.Monad.Trans (lift)
 
 import Cobweb.Core
        (Awaiting, Consumer, Node, awaitOn, i0, inspectLeaf, leafOn,
@@ -41,6 +46,25 @@ import Cobweb.Type.Combinators (All, IIndex)
 -- @
 await :: Node (Awaiting a : cs) m a
 await = awaitOn i0
+
+-- | Consume values indefinitely, by feeding them into a provided
+-- action.
+drain :: Monad m => (a -> m ()) -> Consumer a m r
+drain sink = forever $ do
+  a <- await
+  lift $ sink a
+
+-- | Simply discards the argument.
+--
+-- @
+-- 'discard' = 'const' ('pure' ())
+-- @
+--
+-- This is intended for use with 'drain': @'drain' 'discard'@ is a
+-- 'Consumer' that receives values indefinitely, and does nothing with
+-- them.
+discard :: Applicative f => a -> f ()
+discard = const (pure ())
 
 -- | Apply a function to all incoming values.
 premap :: Functor m => (b -> a) -> Consumer a m r -> Consumer b m r
