@@ -276,43 +276,69 @@ infixl 8 |->
 -- | A depth-first traversal of a connection tree, starting from a
 -- consumer.
 --
--- This operator ‘attaches’ a /right/ 'Node' to the first channel of
--- the /left/ ‘consumer’, putting its channels in the front.  This
--- way, subsequent (/previous/ syntactically, because of fixity)
--- invocations of @('>-|')@ bind to those channels, thus generating a
--- depth-first traversal from the root on the right side.
+-- This operator ‘attaches’ a /right/ 'Node' to the last channel of
+-- the /left/ ‘consumer’, putting attached @'Node'@'s channels in the
+-- back.  This way, subsequent (/previous/ syntactically, because of
+-- fixity) invocations of @('>-|')@ bind to those channels, thus
+-- generating a depth-first traversal from the root on the right side.
 --
 -- ====__Example__
 --
+-- (best read right-to-left)
+--
 -- @
--- 'Cobweb.Core.run' '$' 'Cobweb.Producer.each' [1..3] '>-|' 'Cobweb.Pipe.mapping' 'show' '>-|'
---               'Cobweb.Producer.each' ["a", "b", "c"] '>-|' 'Cobweb.Zip.zipping' 'mappend' '>-|' 'Cobweb.Consumer.drain' 'print'
+-- 'Cobweb.Core.run' '$'                   'Cobweb.Producer.each' [1..3] '>-|' 'Cobweb.Pipe.mapping' 'show' '>-|'
+--       'Cobweb.Producer.each' ["a", "b", "c"] '>-|' 'Cobweb.Pipe.mapping' ('map' 'Data.Char.toUpper') '>-|' 'Cobweb.Zip.zipping' ('Data.List.++') '>-|'
+--                        'Cobweb.Producer.each' [\"X\", \"Y\", \"Z\"] '>-|' 'Cobweb.Pipe.mapping' ('map' 'Data.Char.toLower') '>-|' 'Cobweb.Zip.zipping' ('Data.List.++') '>-|' 'Cobweb.Consumer.drain' 'print'
 -- @
 --
 -- prints
 --
 -- @
--- "a1"
--- "b2"
--- "c3"
+-- "1Ax"
+-- "2By"
+-- "3Cz"
 -- @
---
--- Note that the order of the input channels for 'Cobweb.Zip.zipping'
--- is reversed.
 (>-|) ::
+  forall lcs rcs lcs' rcs' m a.
      ( IWithout (Pred (Len lcs)) lcs lcs'
+     , IWithout (Pred (Len rcs)) rcs rcs'
      , Known Length lcs
+     , Known Length rcs
      , All Functor lcs'
      , All Functor rcs'
-     , Annihilate r (Last lcs)
+     , Annihilate (Last rcs) (Last lcs)
      , Functor m
      )
   => Node lcs m a -- ^ Attached node.
-  -> Node (r : rcs') m a -- ^ ‘Consumer’.
-  -> Node (lcs' ++ rcs') m a
-(>-|) = (>->)
+  -> Node rcs m a -- ^ ‘Consumer’.
+  -> Node (rcs' ++ lcs') m a
+(>-|) =
+  linkConsumer_ \\
+  (iwithoutNonEmpty :: IWithout (Pred (Len lcs)) lcs lcs' :- (Null lcs ~ 'False)) \\
+  (iwithoutNonEmpty :: IWithout (Pred (Len rcs)) rcs rcs' :- (Null rcs ~ 'False)) \\
+  (iwithoutRetainsLength :: ( IWithout (Pred (Len rcs)) rcs rcs'
+                            , Known Length rcs) :- Known Length rcs')
 
 infixr 8 >-|
+
+linkConsumer_ ::
+     ( IWithout (Pred (Len lcs)) lcs lcs'
+     , IWithout (Pred (Len rcs)) rcs rcs'
+     , Null lcs ~ 'False
+     , Null rcs ~ 'False
+     , Known Length rcs'
+     , Known Length lcs
+     , Known Length rcs
+     , Annihilate (Last rcs) (Last lcs)
+     , All Functor lcs'
+     , All Functor rcs'
+     , Functor m
+     )
+  => Node lcs m a
+  -> Node rcs m a
+  -> Node (rcs' ++ lcs') m a
+linkConsumer_ = linkOn' lastIndex lastIndex
 
 -- | Link nodes on a specified pair of channels, putting first node's
 -- channels first in the result.
@@ -321,7 +347,6 @@ infixr 8 >-|
 --
 -- @
 -- ('>->') = 'linkOn' 'lastIndex' 'i0'
--- ('>-|') = ('>->')
 -- @
 linkOn ::
      forall n k lcs lcs' lc rcs rcs' rc m r.
@@ -349,8 +374,11 @@ linkOn n k =
 -- | Link nodes on a specified pair of channels, putting second node's
 -- channels first in the result.
 --
+-- Modulo some magic to cut down on redundant constraints,
+--
 -- @
 -- ('|->') = 'linkOn'' 'i0' 'i0'
+-- ('>-|') = 'linkOn'' 'lastIndex' 'lastIndex'
 -- @
 linkOn' ::
      forall n k lcs lcs' lc rcs rcs' rc m r.
@@ -517,21 +545,51 @@ linkDuplexPushPipe_ = flip (linkOnDuplex' i0 lastIndex)
 infixl 5 |>~
 
 (+>|) ::
+     forall lcs lcs' rcs rcs' lreq lresp rresp rreq m a.
      ( IWithout (Pred (Len lcs)) lcs lcs'
+     , IWithout (Pred (Len rcs)) rcs rcs'
      , Known Length lcs
+     , Known Length rcs
      , All Functor lcs'
      , All Functor rcs'
      , Last lcs ~ Compose lresp lreq
+     , Last rcs ~ Compose rresp rreq
      , Annihilate lreq rresp
      , Annihilate rreq lresp
      , Functor m
      )
   => lreq (Node lcs m a)
-  -> Node (Compose rresp rreq : rcs') m a
-  -> Node (lcs' ++ rcs') m a
-(+>|) = (+>>)
+  -> Node rcs m a
+  -> Node (rcs' ++ lcs') m a
+(+>|) =
+  linkConsumerDuplex_ \\
+  (iwithoutNonEmpty :: IWithout (Pred (Len lcs)) lcs lcs' :- (Null lcs ~ 'False)) \\
+  (iwithoutNonEmpty :: IWithout (Pred (Len rcs)) rcs rcs' :- (Null rcs ~ 'False)) \\
+  (iwithoutRetainsLength :: ( IWithout (Pred (Len rcs)) rcs rcs'
+                            , Known Length rcs) :- Known Length rcs')
 
 infixr 5 +>|
+
+linkConsumerDuplex_ ::
+     ( IWithout (Pred (Len lcs)) lcs lcs'
+     , IWithout (Pred (Len rcs)) rcs rcs'
+     , Known Length lcs
+     , Known Length rcs
+     , Known Length rcs'
+     , All Functor lcs'
+     , All Functor rcs'
+     , Null lcs ~ 'False
+     , Null rcs ~ 'False
+     , Last lcs ~ Compose lresp lreq
+     , Last rcs ~ Compose rresp rreq
+     , Annihilate lreq rresp
+     , Annihilate rreq lresp
+     , Functor m
+     )
+  => lreq (Node lcs m a)
+  -> Node rcs m a
+  -> Node (rcs' ++ lcs') m a
+linkConsumerDuplex_ = linkOnDuplex' lastIndex lastIndex
 
 linkOnDuplex ::
      forall n k lcs lcs' lresp lreq rcs rcs' rresp rreq m r.
