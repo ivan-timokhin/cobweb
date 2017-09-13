@@ -209,7 +209,7 @@ instance (Annihilate f1 g1, Annihilate f2 g2) =>
   (iwithoutRetainsLength :: ( IWithout (Pred (Len lcs)) lcs lcs'
                             , Known Length lcs) :- Known Length lcs')
 
-infixl 7 >->
+infixl 8 >->
 
 linkPipe_ ::
      ( IWithout (Pred (Len lcs)) lcs lcs'
@@ -238,9 +238,9 @@ linkPipe_ = linkOn lastIndex i0
 -- ====__Example__
 --
 -- @
--- 'Cobweb.Core.run' '$' 'Cobweb.Producer.each' [1..3] '|->' 'Cobweb.Unzip.tee' '|->' 'Cobweb.Pipe.mapping' (* 2) '|->' 'Cobweb.Unzip.tee' '|->' 'Cobweb.Pipe.mapping' (+ 50) '|->' 'Cobweb.Consumer.drain' ('Text.Printf.printf' "0: %d\\n")
+-- 'Cobweb.Core.run' '$' 'Cobweb.Producer.each' [1..3] '>->' 'Cobweb.Unzip.tee' '|->' 'Cobweb.Pipe.mapping' (* 2) '>->' 'Cobweb.Unzip.tee' '|->' 'Cobweb.Pipe.mapping' (+ 50) '>->' 'Cobweb.Consumer.drain' ('Text.Printf.printf' "0: %d\\n")
 --                                                     '|->' 'Cobweb.Consumer.drain' ('Text.Printf.printf' "1: %d\\n")
---                           '|->' 'Cobweb.Pipe.mapping' (* 10) '|->' 'Cobweb.Consumer.drain' ('Text.Printf.printf' "2: %d\\n")
+--                           '|->' 'Cobweb.Pipe.mapping' (* 10) '>->' 'Cobweb.Consumer.drain' ('Text.Printf.printf' "2: %d\\n")
 -- @
 --
 -- prints
@@ -271,7 +271,7 @@ linkPipe_ = linkOn lastIndex i0
   -> Node (rcs ++ lcs) m a
 (|->) = linkOn' i0 i0
 
-infixl 8 |->
+infixl 7 |->
 
 -- | A depth-first traversal of a connection tree, starting from a
 -- consumer.
@@ -287,9 +287,9 @@ infixl 8 |->
 -- (best read right-to-left)
 --
 -- @
--- 'Cobweb.Core.run' '$'                   'Cobweb.Producer.each' [1..3] '>-|' 'Cobweb.Pipe.mapping' 'show' '>-|'
---       'Cobweb.Producer.each' ["a", "b", "c"] '>-|' 'Cobweb.Pipe.mapping' ('map' 'Data.Char.toUpper') '>-|' 'Cobweb.Zip.zipping' ('Data.List.++') '>-|'
---                        'Cobweb.Producer.each' [\"X\", \"Y\", \"Z\"] '>-|' 'Cobweb.Pipe.mapping' ('map' 'Data.Char.toLower') '>-|' 'Cobweb.Zip.zipping' ('Data.List.++') '>-|' 'Cobweb.Consumer.drain' 'print'
+-- 'Cobweb.Core.run' '$'                   'Cobweb.Producer.each' [1..3] '>->' 'Cobweb.Pipe.mapping' 'show' '>-|'
+--       'Cobweb.Producer.each' ["a", "b", "c"] '>->' 'Cobweb.Pipe.mapping' ('map' 'Data.Char.toUpper') '>-|' 'Cobweb.Zip.zipping' ('Data.List.++') '>-|'
+--                        'Cobweb.Producer.each' [\"X\", \"Y\", \"Z\"] '>->' 'Cobweb.Pipe.mapping' ('map' 'Data.Char.toLower') '>-|' 'Cobweb.Zip.zipping' ('Data.List.++') '>->' 'Cobweb.Consumer.drain' 'print'
 -- @
 --
 -- prints
@@ -320,7 +320,7 @@ infixl 8 |->
   (iwithoutRetainsLength :: ( IWithout (Pred (Len rcs)) rcs rcs'
                             , Known Length rcs) :- Known Length rcs')
 
-infixr 8 >-|
+infixr 7 >-|
 
 linkConsumer_ ::
      ( IWithout (Pred (Len lcs)) lcs lcs'
