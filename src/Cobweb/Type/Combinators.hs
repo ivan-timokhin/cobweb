@@ -19,6 +19,7 @@ that are used in implementation and interface of the library.
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -56,12 +57,15 @@ module Cobweb.Type.Combinators
   , finjectIdx
   , finl
   , finr
-  , fuse
+  , fuseSum
+  , fuseSumWith
+  , fuseSumAll
     -- * Type synonyms
   , All
   ) where
 
 import Data.Bifunctor (first)
+import Data.Type.Equality ((:~:), type (==))
 import Data.Type.Index (Index(IS, IZ))
 import Data.Type.Length (Length(LS, LZ))
 import Data.Type.Sum.Lifted (FSum(FInL, FInR), injectFSum, nilFSum)
@@ -71,8 +75,7 @@ import Type.Class.Witness (Witness((\\)))
 import Type.Family.Constraint (ØC)
 import Type.Family.List (type (++), type (<$>), Last, ListC, Null)
 import Type.Family.Nat
-       (Len, N(S, Z), N0, N1, N10, N2, N3, N4, N5, N6, N7, N8, N9, NatEq,
-        Pred)
+       (Len, N(S, Z), N0, N1, N10, N2, N3, N4, N5, N6, N7, N8, N9, Pred)
 
 -- | A value of type @'IIndex' n as a@ is a witness of a fact that the
 -- list @as@ contains element @a@ at position @n@; see 'i0' and others
@@ -439,36 +442,36 @@ finr _ = loop (known :: Length fs)
 --
 -- Note that the terms must be identical as types, they must be
 -- distinct /terms of the sum/; i.e. provided indices must be distinct
--- (hence @'NatEq' n m ~ ''False'@ constraint).
+-- (hence @(n 'Data.Type.Equality.==' m) ~ ''False'@ constraint).
 --
 -- Specialised to different values of the indices, the type looks like
 -- this:
 --
 -- @
--- 'fuse' 'i0' 'i1' :: 'FSum' (f : f : fs) a -> 'FSum' (f : fs) a
--- 'fuse' 'i0' 'i2' :: 'FSum' (f : f1 : f : fs) a -> 'FSum' (f1 : f : fs)
--- 'fuse' 'i2' 'i0' :: 'FSum' (f : f1 : f : fs) a -> 'FSum' (f : f1 : fs)
+-- 'fuseSum' 'i0' 'i1' :: 'FSum' (f : f : fs) a -> 'FSum' (f : fs) a
+-- 'fuseSum' 'i0' 'i2' :: 'FSum' (f : f1 : f : fs) a -> 'FSum' (f1 : f : fs)
+-- 'fuseSum' 'i2' 'i0' :: 'FSum' (f : f1 : f : fs) a -> 'FSum' (f : f1 : fs)
 -- @
 --
--- Trying to call @'fuse' 'i0' 'i0'@ and such results in a type
+-- Trying to call @'fuseSum' 'i0' 'i0'@ and such results in a type
 -- error.  Unfortunately, it does not mention indices at all, instead
 -- complaining that
 --
 -- >    • Couldn't match type ‘'True’ with ‘'False’
--- >        arising from a use of ‘fuse’
+-- >        arising from a use of ‘fuseSum’
 --
--- so if such errors arise, a likely cause is trying to 'fuse' a term
+-- so if such errors arise, a likely cause is trying to 'fuseSum' a term
 -- with itself.
-fuse ::
-     forall n m fs gs f a. (IWithout n fs gs, NatEq n m ~ 'False)
-  => IIndex n fs f
-  -> IIndex m fs f
+fuseSum ::
+     forall n m fs gs f a. (IWithout n fs gs, (n == m) ~ 'False)
+  => IIndex n fs f -- ^ The index of the term to be moved.
+  -> IIndex m fs f -- ^ The index of the term to be kept.
   -> FSum fs a
   -> FSum gs a
-fuse = loop (iwithout :: IRemove n fs gs)
+fuseSum = loop (iwithout :: IRemove n fs gs)
   where
     loop ::
-         (NatEq n' m' ~ 'False)
+         (n' == m') ~ 'False
       => IRemove n' fs' gs'
       -> IIndex n' fs' f
       -> IIndex m' fs' f
@@ -482,6 +485,65 @@ fuse = loop (iwithout :: IRemove n fs gs)
         Left other -> other
     loop (IRemS _) (IIS _) (IIS _) (FInL f) = FInL f
     loop (IRemS r) (IIS n) (IIS m) (FInR other) = FInR (loop r n m other)
+
+-- | Unify two terms in the sum by transforming them into a common
+-- functor, discarding the first term and replacing the second.
+--
+-- Specialised to different indices, the type looks like this:
+--
+-- @
+-- \f g -> 'fuseSumWith' f g i0 i1
+--   :: (f0 a -> h a) -> (f1 a -> h a) -> 'FSum' (f0 : f1 : fs) a -> 'FSum' (h : as) a
+--
+-- \f g -> 'fuseSumWith' f g i0 i2
+--   :: (f0 a -> h a) -> (f2 a -> h a) -> 'FSum' (f0 : f1 : f2 : fs) a -> 'FSum' (f1 : h : fs) a
+--
+-- \f g -> 'fuseSumWith' f g i2 i0
+--   :: (f2 a -> h a) -> (f0 a -> h a) -> 'FSum' (f0 : f1 : f2 : fs) a -> 'FSum' (h : f1 : fs) a
+-- @
+fuseSumWith ::
+     forall n m fs gs hs f g h a.
+     (IReplaced m fs h gs, IWithout n gs hs, (n == m) ~ 'False)
+  => (f a -> h a)
+  -> (g a -> h a)
+  -> IIndex n fs f
+  -> IIndex m fs g
+  -> FSum fs a
+  -> FSum hs a
+fuseSumWith ft gt =
+  loop (ireplace :: IReplace m fs h gs) (iwithout :: IRemove n gs hs)
+  where
+    loop ::
+         (n' == m') ~ 'False
+      => IReplace m' fs' h gs'
+      -> IRemove n' gs' hs'
+      -> IIndex n' fs' f
+      -> IIndex m' fs' g
+      -> FSum fs' a
+      -> FSum hs' a
+    loop (IRepS rep) IRemZ IIZ (IIS _) (FInL f) =
+      finjectIdx (replaceIdx rep) (ft f)
+    loop (IRepS rep) IRemZ IIZ (IIS m) (FInR fs) = freplaceIdx m gt fs \\ rep
+    loop IRepZ (IRemS _) (IIS _) IIZ (FInL g) = FInL (gt g)
+    loop IRepZ (IRemS irem) (IIS n) IIZ (FInR fs) =
+      case fdecompIdx n fs \\ irem of
+        Right f -> FInL (ft f)
+        Left other -> FInR other
+    loop (IRepS _) (IRemS _) (IIS _) (IIS _) (FInL f) = FInL f
+    loop (IRepS rep) (IRemS irem) (IIS n) (IIS m) (FInR other) =
+      FInR (loop rep irem n m other)
+
+-- | Unify /all/ of the terms in the sum, if they are all identical
+-- (which is the meaning of a rather weird-looking constraint).
+fuseSumAll :: All (Known ((:~:) f)) fs => FSum fs a -> f a
+fuseSumAll (FInL f) = idEq f
+fuseSumAll (FInR fs) = fuseSumAll fs
+
+idEq ::
+  forall f g a. Known ((:~:) f) g
+  => g a
+  -> f a
+idEq g = g \\ (known :: f :~: g)
 
 -- | An analogue of 'all' for type-level lists.
 --
