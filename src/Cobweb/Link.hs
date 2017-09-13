@@ -238,13 +238,9 @@ linkPipe_ = linkOn lastIndex i0
 -- ====__Example__
 --
 -- @
--- let
---   printN :: 'Show' a => Int -> a -> IO ()
---   printN n v = 'putStrLn' ('show' n ++ ": " ++ 'show' v)
--- in
---   'Cobweb.Core.run' '$' 'Cobweb.Producer.each' [1..3] '|->' 'Cobweb.Unzip.tee' '|->' 'Cobweb.Pipe.mapping' (* 2) '|->' 'Cobweb.Unzip.tee' '|->' 'Cobweb.Pipe.mapping' (+ 50) '|->' 'Cobweb.Consumer.drain' (printN 0)
---                                                       '|->' 'Cobweb.Consumer.drain' (printN 1)
---                             '|->' 'Cobweb.Pipe.mapping' (* 10) '|->' 'Cobweb.Consumer.drain' (printN 2)
+-- 'Cobweb.Core.run' '$' 'Cobweb.Producer.each' [1..3] '|->' 'Cobweb.Unzip.tee' '|->' 'Cobweb.Pipe.mapping' (* 2) '|->' 'Cobweb.Unzip.tee' '|->' 'Cobweb.Pipe.mapping' (+ 50) '|->' 'Cobweb.Consumer.drain' ('Text.Printf.printf' "0: %d\\n")
+--                                                     '|->' 'Cobweb.Consumer.drain' ('Text.Printf.printf' "1: %d\\n")
+--                           '|->' 'Cobweb.Pipe.mapping' (* 10) '|->' 'Cobweb.Consumer.drain' ('Text.Printf.printf' "2: %d\\n")
 -- @
 --
 -- prints
