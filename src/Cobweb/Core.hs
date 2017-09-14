@@ -65,6 +65,7 @@ module Cobweb.Core
   , premapOn
   , premapOnM
     -- * Looping over 'Node's
+  , forsAll
   , forsOn
   , forsOnLeaf
   , forOn
@@ -468,6 +469,22 @@ premapOnM ::
   -> Node cs' m r -- ^ Same 'Node', but with the channel replaced.
 premapOnM n f = mapsOnM' n (\g -> fmap g . f)
 
+-- | Replace the current list of channels by substituting a
+-- computation with new channels for each communication attempt.
+--
+-- Essentially, @'forsAll' node body@ replaces each call to 'connects'
+-- (as well as specialised variants) with @body@.
+forsAll ::
+     (Functor m, All Functor cs, All Functor cs')
+  => Node cs m r
+  -> (forall x. FSum cs x -> Node cs' m x)
+  -> Node cs' m r
+forsAll node f = transform alg node
+  where
+    alg (ReturnF r) = ReturnF r
+    alg (EffectF eff) = EffectF eff
+    alg (ConnectF con) = getNode $ join (f con)
+
 -- | Substitute each attempt to communicate on a given channel with a
 -- computation with a different list of channels.
 --
@@ -534,14 +551,12 @@ forsOn_ ::
   -> Node cs m r
   -> (forall x. c x -> Node cs' m x)
   -> Node (cs'' ++ cs') m r
-forsOn_ n node f = transform alg node
+forsOn_ n node f = forsAll node body
   where
-    alg (ReturnF r) = ReturnF r
-    alg (EffectF eff) = EffectF eff
-    alg (ConnectF con) =
+    body con =
       case fdecompIdx n con of
-        Left other -> ConnectF (finl proxyInner other)
-        Right c -> getNode $ join $ mapsAll (finr proxyOuter) $ f c
+        Left other -> connects (finl proxyInner other)
+        Right c -> mapsAll (finr proxyOuter) (f c)
     proxyInner :: Proxy cs'
     proxyInner = Proxy
     proxyOuter :: Proxy cs''
@@ -589,19 +604,22 @@ forsOnLeaf n node f =
 
 forsOnLeaf_ ::
      forall m n cs c' cs' r c.
-     (Functor m, All Functor cs, Functor c', IReplaced n cs c' cs', All Functor cs')
+     ( Functor m
+     , All Functor cs
+     , Functor c'
+     , IReplaced n cs c' cs'
+     , All Functor cs'
+     )
   => IIndex n cs c
   -> Node cs m r
   -> (forall x. c x -> Leaf c' m x)
   -> Node cs' m r
-forsOnLeaf_ n node f = transform alg node
+forsOnLeaf_ n node f = forsAll node body
   where
-    alg (ReturnF r) = ReturnF r
-    alg (EffectF eff) = EffectF eff
-    alg (ConnectF con) =
+    body con =
       case fdecompReplaceIdx n (Proxy :: Proxy c') con of
-        Left c -> ConnectF c
-        Right c -> getNode $ join $ mapsAll (finjectIdx newIdx . fsumOnly) $ f c
+        Left c -> connects c
+        Right c -> mapsAll (finjectIdx newIdx . fsumOnly) (f c)
     newIdx = replaceIdx (ireplace :: IReplace n cs c' cs')
 
 -- | Loop over a 'Node', replacing each 'yieldOn' the specified
