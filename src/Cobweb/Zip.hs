@@ -7,7 +7,7 @@ Maintainer: timokhin.iv@gmail.com
 Stability: experimental
 
 This module provides functionality for merging streams of values
-together in a manner reminiscent of 'Data.List.zip' from the @base@.
+together in a manner reminiscent of 'Data.List.zip' from @base@.
 
 Note that, even though it is possible to have multiple streams of
 values on one 'Node', it is not possible to merge them in this
