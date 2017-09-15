@@ -18,3 +18,10 @@ unzipping f =
     let (b, c) = f a
     yieldOn i1 b
     yieldOn i2 c
+
+tee :: Functor m => Node '[ Awaiting a, Yielding a, Yielding a] m r
+tee =
+  forever $ do
+    a <- awaitOn i0
+    yieldOn i1 a
+    yieldOn i2 a

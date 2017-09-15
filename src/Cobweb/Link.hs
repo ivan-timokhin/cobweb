@@ -288,8 +288,8 @@ infixl 7 |->
 --
 -- @
 -- 'Cobweb.Core.run' '$'                   'Cobweb.Producer.each' [1..3] '>->' 'Cobweb.Pipe.mapping' 'show' '>-|'
---       'Cobweb.Producer.each' ["a", "b", "c"] '>->' 'Cobweb.Pipe.mapping' ('map' 'Data.Char.toUpper') '>-|' 'Cobweb.Zip.zipping' ('Data.List.++') '>-|'
---                        'Cobweb.Producer.each' [\"X\", \"Y\", \"Z\"] '>->' 'Cobweb.Pipe.mapping' ('map' 'Data.Char.toLower') '>-|' 'Cobweb.Zip.zipping' ('Data.List.++') '>->' 'Cobweb.Consumer.drain' 'print'
+--       'Cobweb.Producer.each' ["a", "b", "c"] '>->' 'Cobweb.Pipe.mapping' ('map' 'Data.Char.toUpper') '>-|' 'Cobweb.Zip.zippingWith' ('Data.List.++') '>-|'
+--                            'Cobweb.Producer.each' [\"X\", \"Y\", \"Z\"] '>->' 'Cobweb.Pipe.mapping' ('map' 'Data.Char.toLower') '>-|' 'Cobweb.Zip.zippingWith' ('Data.List.++') '>->' 'Cobweb.Consumer.drain' 'print'
 -- @
 --
 -- prints
