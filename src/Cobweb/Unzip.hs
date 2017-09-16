@@ -7,7 +7,8 @@ Maintainer: timokhin.iv@gmail.com
 Stability: experimental
 
 This module provides functionality for splitting streams of values in
-a manner reminiscent of 'Data.List.unzip' from @base@.
+a manner reminiscent of 'Data.List.unzip' and 'Data.List.partition'
+from @base@.
 
 Note that, unlike their list counterparts, functions from this module
 and "Cobweb.Zip" do /not/ cancel each other out; while functions in
@@ -28,7 +29,16 @@ general, and allows easier specification of exact desired semantics.
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DataKinds #-}
 
-module Cobweb.Unzip where
+module Cobweb.Unzip
+  ( unzippingWith
+  , unzipping
+  , unzippingWith3
+  , unzipping3
+  , partitioning
+  , partitioningEither
+  , partitioningWithEither
+  , tee
+  ) where
 
 import Control.Monad (forever)
 
@@ -89,3 +99,37 @@ unzipping3 = unzippingWith3 id
 -- | Duplicate values of the incoming stream on both outgoing ones.
 tee :: Functor m => Node '[ Awaiting a, Yielding a, Yielding a] m r
 tee = unzippingWith (\x -> (x, x))
+
+-- | Split the stream according to the given predicate; values that
+-- satisfy the predicate go on the first channel, the ones that do not
+-- go on the second.
+--
+-- A moral equivalent of 'Data.List.partition'.
+partitioning ::
+     Functor m => (a -> Bool) -> Node '[ Awaiting a, Yielding a, Yielding a] m r
+partitioning predicate =
+  partitioningWithEither $ \a ->
+    if predicate a
+      then Left a
+      else Right a
+
+-- | Partition the stream of 'Either's, yielding all 'Left' values on
+-- the first channel, and 'Right' ones on the second.
+--
+-- A moral equivalent of 'Data.Either.partitionEithers'.
+partitioningEither ::
+     Functor m => Node '[ Awaiting (Either a b), Yielding a, Yielding b] m r
+partitioningEither = partitioningWithEither id
+
+-- | A variant of 'partitioningEither' that allows converting values
+-- into 'Either's on the fly.
+partitioningWithEither ::
+     Functor m
+  => (a -> Either b c)
+  -> Node '[ Awaiting a, Yielding b, Yielding c] m r
+partitioningWithEither f =
+  forever $ do
+    a <- awaitOn i0
+    case f a of
+      Left b -> yieldOn i1 b
+      Right c -> yieldOn i2 c
