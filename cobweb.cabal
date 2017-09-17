@@ -35,6 +35,7 @@ library
                      , Cobweb.Unzip
                      , Cobweb.Group
                      , Cobweb.Trans
+                     , Cobweb.Duplex
   build-depends:       base >= 4.7 && < 5
                      , mtl
                      , mmorph
