@@ -12,6 +12,8 @@ Some of the functions in this module have channel- and functor-generic
 counterparts in "Cobweb.Core"; these are specialised for 'Producer's.
 -}
 {-# OPTIONS_HADDOCK show-extensions #-}
+{-# OPTIONS_GHC -Wno-missing-import-lists #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -26,7 +28,11 @@ module Cobweb.Producer
   , for
   , next
   , produceOn
+  , span
+  , splitAt
   ) where
+
+import Prelude hiding (span, splitAt)
 
 import Control.Monad (forever)
 import Control.Monad.Trans (lift)
@@ -35,10 +41,12 @@ import Type.Class.Known (Known)
 import Type.Family.List (Last, Null)
 
 import Cobweb.Core
-       (Producer, Yielding, eachOn, forOn, inspectLeaf, leafOn, mapOn,
+       (Leaf, Producer, Yielding, eachOn, forOn, inspectLeaf, leafOn, mapOn,
         yieldOn)
-import Cobweb.Internal (Node)
-import Cobweb.Type.Combinators (All, IIndex, i0, lastIndex)
+import Cobweb.Internal
+       (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF))
+import Cobweb.Type.Combinators
+       (All, IIndex, fsumOnly, i0, lastIndex)
 
 -- | Produce a value on the last channel of a 'Node'.
 --
@@ -126,3 +134,43 @@ produceOn ::
   -> Producer a m r
   -> Node cs m r
 produceOn = leafOn
+
+-- | Produce all elements up to the first one that violates the
+-- predicate (non-inclusive), then return the rest of the stream.
+--
+-- A moral equivalent of 'Data.List.span'.
+span ::
+     Functor m => (a -> Bool) -> Producer a m r -> Producer a m (Producer a m r)
+span predicate = loop
+  where
+    loop node =
+      Node $
+      case getNode node of
+        ReturnF r -> ReturnF (pure r)
+        EffectF eff -> EffectF (fmap loop eff)
+        ConnectF con ->
+          let !(a, _) = fsumOnly con
+          in if predicate a
+               then ConnectF (fmap loop con)
+               else ReturnF (Node (ConnectF con))
+
+-- | Split the stream at @n@th connection, and return the rest.
+--
+-- While this function is technically functor-generic, semantics are
+-- tied to 'Producer'-like 'Node's.  In particular, the ‘outer’ 'Leaf'
+-- terminates immediately after the @n@th connection, which makes
+-- perfect sense for 'Producer's, which typically have
+-- connection-associated actions /before/ the actual connection, but
+-- not for consumers.
+--
+-- A moral equivalent of 'Data.List.splitAt'; see also
+-- 'Cobweb.Consumer.splitAt'.
+splitAt :: (Functor c, Functor m) => Int -> Leaf c m r -> Leaf c m (Leaf c m r)
+splitAt n node
+  | n <= 0 = pure node
+  | otherwise =
+    Node $
+    case getNode node of
+      ReturnF r -> ReturnF (pure r)
+      EffectF eff -> EffectF (fmap (splitAt n) eff)
+      ConnectF con -> ConnectF (fmap (splitAt (n - 1)) con)

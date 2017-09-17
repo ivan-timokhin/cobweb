@@ -12,6 +12,7 @@ Some of the functions in this module have channel- and functor-generic
 counterparts in "Cobweb.Core"; these are specialised for 'Consumer's.
 -}
 {-# OPTIONS_HADDOCK show-extensions #-}
+{-# OPTIONS_GHC -Wno-missing-import-lists #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
 
@@ -25,14 +26,19 @@ module Cobweb.Consumer
   , prefor
   , nextRequest
   , consumeOn
+  , splitAt
   ) where
+
+import Prelude hiding (splitAt)
 
 import Control.Monad (forever)
 import Control.Monad.Trans (lift)
 
 import Cobweb.Core
-       (Awaiting, Consumer, Node, awaitOn, i0, inspectLeaf, leafOn,
+       (Awaiting, Consumer, Leaf, Node, awaitOn, i0, inspectLeaf, leafOn,
         preforOn, premapOn)
+import Cobweb.Internal
+       (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF))
 import Cobweb.Type.Combinators (All, IIndex)
 
 -- | Produce a value on the first channel of a 'Node'.
@@ -113,3 +119,24 @@ nextRequest = inspectLeaf
 consumeOn ::
      Functor m => IIndex n cs (Awaiting a) -> Consumer a m r -> Node cs m r
 consumeOn = leafOn
+
+-- | Split the stream before @(n + 1)@th connection, and return the
+-- rest.
+--
+-- While this function is technically functor-generic, semantics are
+-- tied to 'Consumer'-like 'Node's.  In particular, the ‘outer’
+-- terminates immediately before the @(n + 1)@th connection, which
+-- makes perfect sense for 'Consumer's, which typically have
+-- connection-associated actions /after/ the actual connection, but
+-- not so for producers.
+--
+-- See also 'Cobweb.Producer.splitAt'
+splitAt :: (Functor c, Functor m) => Int -> Leaf c m r -> Leaf c m (Leaf c m r)
+splitAt n node =
+  Node $
+  case getNode node of
+    ReturnF r -> ReturnF (pure r)
+    EffectF eff -> EffectF (fmap (splitAt n) eff)
+    ConnectF con
+      | n <= 0 -> getNode $ pure node
+      | otherwise -> ConnectF (fmap (splitAt (n - 1)) con)
