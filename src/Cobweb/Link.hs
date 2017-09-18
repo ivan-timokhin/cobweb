@@ -405,24 +405,46 @@ linkOn' n k =
 
 -- $duplex
 --
--- FIXME write an actual documentation once there's a Duplex module
--- with all the necessary vocabulary.
+-- See "Cobweb.Duplex" for brief explanation of how duplex
+-- communication works, and example 'Node's.
+--
+-- Since at every moment, only one 'Node' in the graph is not blocked
+-- awaiting response, the control flow in duplex communication is
+-- completely unambiguous, unlike convention-based control flow of
+-- simplex links; that is, immediately available 'Node' (as in, the
+-- one not wrapped in the communication functor) is always run first.
+
+-- | Pull-based linking of two 'Node's.
+--
+-- ====__Example types__
+--
+-- This operator can be thought of as having the following types:
 --
 -- @
---    .   .   .                        .    .    .
--- |  connectsOn  |                     do stuff
--- |              |                 ________________
--- |_____________ lreq ---><--- rresp              |
---                                  |              |
---     do stuff                     |  connectsOn  |
--- ________________                 |              |
--- |              lresp ---><--- rreq______________|
--- |              |
--- |  connectsOn  |                     do stuff
---    .   .   .                       .    .    .
+-- ('+>>') ::
+--      'Functor' m
+--   => (b -> 'Cobweb.Duplex.Client' a b m r)
+--   -> 'Cobweb.Duplex.Client' b a m r
+--   -> 'Cobweb.Core.Effect' m r
+--
+-- ('+>>') ::
+--      'Functor' m
+--   => (a' -> 'Cobweb.Duplex.Client' a a' m r)
+--   -> 'Cobweb.Duplex.Proxy' a' a b' b m r
+--   -> 'Cobweb.Duplex.Client' b b' m r
+--
+-- ('+>>') ::
+--      'Functor' m
+--   => (b' -> 'Cobweb.Duplex.Proxy' a' a b' b m r)
+--   -> 'Cobweb.Duplex.Client' b' b m r
+--   -> 'Cobweb.Duplex.Client' a' a m r
+--
+-- ('+>>') ::
+--      'Functor' m
+--   => (b' -> 'Cobweb.Duplex.Proxy' a' a b' b m r)
+--   -> 'Cobweb.Duplex.Proxy' b' b c' c m r
+--   -> 'Cobweb.Duplex.Proxy' a' a c' c m r
 -- @
-
-
 (+>>) ::
      forall lcs lcs' lreq lresp rcs' rreq rresp m a.
      ( IWithout (Pred (Len lcs)) lcs lcs'
@@ -434,8 +456,8 @@ linkOn' n k =
      , Annihilate rreq lresp
      , Functor m
      )
-  => lreq (Node lcs m a)
-  -> Node (Compose rresp rreq : rcs') m a
+  => lreq (Node lcs m a) -- ^ Upstream ‘server’ node.
+  -> Node (Compose rresp rreq : rcs') m a -- ^ Downstream ‘client’ node.
   -> Node (lcs' ++ rcs') m a
 (+>>) =
   linkDuplexPullPipe_ \\
@@ -443,8 +465,29 @@ linkOn' n k =
   (iwithoutRetainsLength :: ( IWithout (Pred (Len lcs)) lcs lcs'
                             , Known Length lcs) :- Known Length lcs')
 
+infixr 5 +>>
+
+-- | A point-free version of @('+>>')@.
+--
+-- ====__Example types__
+--
+-- This operator can be thought of as having the following types:
+--
+-- @
+-- ('>+>') ::
+--      'Functor' m
+--   => (a' -> 'Cobweb.Duplex.Client' a a' m r)
+--   -> (b' -> 'Cobweb.Duplex.Proxy' a' a b' b m r)
+--   -> (b' -> 'Cobweb.Duplex.Client' b b' m r)
+--
+-- ('>+>') ::
+--      'Functor' m
+--   => (b' -> 'Cobweb.Duplex.Proxy' a' a b' b m r)
+--   -> (c' -> 'Cobweb.Duplex.Proxy' b' b c' c m r)
+--   -> (c' -> 'Cobweb.Duplex.Proxy' a' a c' c m r)
+-- @
 (>+>) ::
-  ( IWithout (Pred (Len lcs)) lcs lcs'
+     ( IWithout (Pred (Len lcs)) lcs lcs'
      , Known Length lcs
      , All Functor lcs'
      , All Functor rcs'
@@ -454,10 +497,13 @@ linkOn' n k =
      , Functor rreq'
      , Functor m
      )
-  => lreq (Node lcs m a)
-  -> rreq' (Node (Compose rresp rreq : rcs') m a)
+  => lreq (Node lcs m a) -- ^ Upstream ‘server’ node.
+  -> rreq' (Node (Compose rresp rreq : rcs') m a) -- ^ Downstream
+     -- ‘client’ node.
   -> rreq' (Node (lcs' ++ rcs') m a)
 (>+>) left = fmap (left +>>)
+
+infixl 6 >+>
 
 linkDuplexPullPipe_ ::
      ( IWithout (Pred (Len lcs)) lcs lcs'
@@ -476,6 +522,37 @@ linkDuplexPullPipe_ ::
   -> Node (lcs' ++ rcs') m r
 linkDuplexPullPipe_ = linkOnDuplex lastIndex i0
 
+-- | Push-based linking of two 'Node's.
+--
+-- ====__Example types__
+--
+-- This operator can be thought of as having the following types:
+--
+-- @
+-- ('>>~') ::
+--      'Functor' m
+--   => 'Cobweb.Duplex.Client' a a' m r
+--   -> (a -> 'Cobweb.Duplex.Client' a' a m r)
+--   -> 'Cobweb.Core.Effect' m r
+--
+-- ('>>~') ::
+--      'Functor' m
+--   => 'Cobweb.Duplex.Client' a a' m r
+--   -> (a -> 'Cobweb.Duplex.Proxy' a' a b' b m r)
+--   -> 'Cobweb.Duplex.Client' b b' m r
+--
+-- ('>>~') ::
+--      'Functor' m
+--   => 'Cobweb.Duplex.Proxy' a' a b' b m r
+--   -> (b -> 'Cobweb.Duplex.Client' b' b m r)
+--   -> 'Cobweb.Duplex.Client' a' a m r
+--
+-- ('>>~') ::
+--      'Functor' m
+--   => 'Cobweb.Duplex.Proxy' a' a b' b m r
+--   -> (b -> 'Cobweb.Duplex.Proxy' b' b c' c m r)
+--   -> 'Cobweb.Duplex.Proxy' a' a c' c m r
+-- @
 (>>~) ::
      forall lcs lcs' lreq lresp rcs' rreq rresp m a.
      ( IWithout (Pred (Len lcs)) lcs lcs'
@@ -487,8 +564,9 @@ linkDuplexPullPipe_ = linkOnDuplex lastIndex i0
      , Annihilate rreq lresp
      , Functor m
      )
-  => Node lcs m a
-  -> rreq (Node (Compose rresp rreq : rcs') m a)
+  => Node lcs m a -- ^ Upstream ‘client’ node.
+  -> rreq (Node (Compose rresp rreq : rcs') m a) -- ^ Downstream
+     -- ‘server’ node.
   -> Node (lcs' ++ rcs') m a
 (>>~) =
   linkDuplexPushPipe_ \\
@@ -496,6 +574,27 @@ linkDuplexPullPipe_ = linkOnDuplex lastIndex i0
   (iwithoutRetainsLength :: ( IWithout (Pred (Len lcs)) lcs lcs'
                             , Known Length lcs) :- Known Length lcs')
 
+infixl 5 >>~
+
+-- | A point-free version of @('>>~')@.
+--
+-- ====__Example types__
+--
+-- This operator can be thought of as having the following types:
+--
+-- @
+-- ('>~>') ::
+--      'Functor' m
+--   => (a -> 'Cobweb.Duplex.Proxy' a' a b' b m r)
+--   -> (b -> 'Cobweb.Duplex.Client' b' b m r)
+--   -> (a -> 'Cobweb.Duplex.Client' a' a m r)
+--
+-- ('>~>') ::
+--      'Functor' m
+--   => (a -> 'Cobweb.Duplex.Proxy' a' a b' b m r)
+--   -> (b -> 'Cobweb.Duplex.Proxy' b' b c' c m r)
+--   -> (a -> 'Cobweb.Duplex.Proxy' a' a c' c m r)
+-- @
 (>~>) ::
      ( IWithout (Pred (Len lcs)) lcs lcs'
      , Known Length lcs
@@ -507,10 +606,13 @@ linkDuplexPullPipe_ = linkOnDuplex lastIndex i0
      , Annihilate rreq lresp
      , Functor m
      )
-  => lreq' (Node lcs m a)
-  -> rreq (Node (Compose rresp rreq : rcs') m a)
+  => lreq' (Node lcs m a) -- ^ Upstream ‘client’ node.
+  -> rreq (Node (Compose rresp rreq : rcs') m a) -- ^ Downstream
+     -- ‘server’ node.
   -> lreq' (Node (lcs' ++ rcs') m a)
 left >~> right = fmap (>>~ right) left
+
+infixl 6 >~>
 
 linkDuplexPushPipe_ ::
      ( IWithout (Pred (Len lcs)) lcs lcs'
@@ -529,6 +631,7 @@ linkDuplexPushPipe_ ::
   -> Node (lcs' ++ rcs') m r
 linkDuplexPushPipe_ = flip (linkOnDuplex' i0 lastIndex)
 
+-- | @('|>~')@ is to @('>>~')@ what @('|->')@ is to @('>->')@.
 (|>~) ::
      ( All Functor lcs
      , All Functor rcs
@@ -537,13 +640,14 @@ linkDuplexPushPipe_ = flip (linkOnDuplex' i0 lastIndex)
      , Annihilate rreq lresp
      , Functor m
      )
-  => Node (Compose lresp lreq : lcs) m r
-  -> rreq (Node (Compose rresp rreq : rcs) m r)
+  => Node (Compose lresp lreq : lcs) m r -- ^ A ‘client’ node.
+  -> rreq (Node (Compose rresp rreq : rcs) m r) -- ^ A ‘server’ node.
   -> Node (rcs ++ lcs) m r
 (|>~) = flip (linkOnDuplex i0 i0)
 
-infixl 5 |>~
+infixl 4 |>~
 
+-- | @('+>|')@ is to @('+>>')@ what @('>-|')@ is to @('>->')@.
 (+>|) ::
      forall lcs lcs' rcs rcs' lreq lresp rresp rreq m a.
      ( IWithout (Pred (Len lcs)) lcs lcs'
@@ -558,8 +662,8 @@ infixl 5 |>~
      , Annihilate rreq lresp
      , Functor m
      )
-  => lreq (Node lcs m a)
-  -> Node rcs m a
+  => lreq (Node lcs m a) -- ^ A ‘server’ node.
+  -> Node rcs m a -- ^ A ‘client’ node.
   -> Node (rcs' ++ lcs') m a
 (+>|) =
   linkConsumerDuplex_ \\
@@ -568,7 +672,7 @@ infixl 5 |>~
   (iwithoutRetainsLength :: ( IWithout (Pred (Len rcs)) rcs rcs'
                             , Known Length rcs) :- Known Length rcs')
 
-infixr 5 +>|
+infixr 4 +>|
 
 linkConsumerDuplex_ ::
      ( IWithout (Pred (Len lcs)) lcs lcs'
@@ -591,6 +695,8 @@ linkConsumerDuplex_ ::
   -> Node (rcs' ++ lcs') m a
 linkConsumerDuplex_ = linkOnDuplex' lastIndex lastIndex
 
+-- | Link nodes on a specified pair of duplex channels, putting first
+-- (‘server’) node's channels first in the result.
 linkOnDuplex ::
      forall n k lcs lcs' lresp lreq rcs rcs' rresp rreq m r.
      ( IWithout n lcs lcs'
@@ -602,16 +708,20 @@ linkOnDuplex ::
      , Annihilate rreq lresp
      , Functor m
      )
-  => IIndex n lcs (Compose lresp lreq)
-  -> IIndex k rcs (Compose rresp rreq)
-  -> lreq (Node lcs m r)
-  -> Node rcs m r
+  => IIndex n lcs (Compose lresp lreq) -- ^ The index of the linked
+     -- channel on the ‘server’ node.
+  -> IIndex k rcs (Compose rresp rreq) -- ^ The index of the linked
+     -- channel on the ‘client’ node.
+  -> lreq (Node lcs m r) -- ^ ‘Server’ node.
+  -> Node rcs m r -- ^ ‘Client’ node.
   -> Node (lcs' ++ rcs') m r
 linkOnDuplex = genericLinkOn getCompose getCompose (finl proxyR) (finr proxyL)
   where
     proxyR = Proxy :: Proxy rcs'
     proxyL = Proxy :: Proxy lcs'
 
+-- | Link nodes on a specified pair of duplex channels, putting second
+-- (‘client’) node's channels first in the result.
 linkOnDuplex' ::
      forall n k lcs lcs' lresp lreq rcs rcs' rresp rreq m r.
      ( IWithout n lcs lcs'
@@ -623,10 +733,12 @@ linkOnDuplex' ::
      , Annihilate rreq lresp
      , Functor m
      )
-  => IIndex n lcs (Compose lresp lreq)
-  -> IIndex k rcs (Compose rresp rreq)
-  -> lreq (Node lcs m r)
-  -> Node rcs m r
+  => IIndex n lcs (Compose lresp lreq) -- ^ The index of the linked
+     -- channel on the ‘server’ node.
+  -> IIndex k rcs (Compose rresp rreq) -- ^ The index of the linked
+     -- channel on the ‘client’ node.
+  -> lreq (Node lcs m r) -- ^ ‘Server’ node.
+  -> Node rcs m r -- ^ ‘Client’ node.
   -> Node (rcs' ++ lcs') m r
 linkOnDuplex' = genericLinkOn getCompose getCompose (finr proxyR) (finl proxyL)
   where
@@ -646,9 +758,9 @@ genericLinkOn ::
      , Functor m
      )
   => (forall x. lc x -> lresp (lreq x)) -- ^ Convert the channel on
-     -- the first node into a duplex representation.
+     -- the first node to a duplex representation.
   -> (forall x. rc x -> rresp (rreq x)) -- ^ Convert the channel on
-     -- the second node into a duplex representation.
+     -- the second node to a duplex representation.
   -> (forall x. FSum lcs' x -> FSum rescs x) -- ^ Embed remaining
      -- channels of the first node into the resulting list.
   -> (forall x. FSum rcs' x -> FSum rescs x) -- ^ Embed remaining
