@@ -14,7 +14,6 @@ that are used in implementation and interface of the library.
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds #-}
@@ -43,11 +42,9 @@ module Cobweb.Type.Combinators
   , i9
   , i10
     -- * Removing elements
-  , IRemove(IRemZ, IRemS)
-  , IWithout(iwithout)
+  , Remove
     -- * Replacing elements
-  , IReplace(IRepZ, IRepS)
-  , IReplaced(ireplace)
+  , Replace
   , replaceIdx
     -- * Manipulating 'FSum'
   , fsumOnly
@@ -72,7 +69,6 @@ import Data.Type.Sum.Lifted (FSum(FInL, FInR), injectFSum, nilFSum)
 import Data.Void (absurd)
 import Type.Class.Known (Known(known))
 import Type.Class.Witness (Witness((\\)))
-import Type.Family.Constraint (ØC)
 import Type.Family.List (type (++), type (<$>), Last, ListC, Null)
 import Type.Family.Nat
        (Len, N(S, Z), N0, N1, N10, N2, N3, N4, N5, N6, N7, N8, N9, Pred)
@@ -157,116 +153,20 @@ i10 ::
      IIndex N10 (a0 : a1 : a2 : a3 : a4 : a5 : a6 : a7 : a8 : a9 : a10 : as) a10
 i10 = IIS i9
 
--- | A value of a type @'IRemove' n as bs@ witnesses that @as@ has
--- @n@th element, and removing it yields @bs@.
---
--- Examples:
---
--- @
--- 'IRemZ' :: 'IRemove' 'N0' (a0 : as) as
--- 'IRemS' 'IRemZ' :: 'IRemove' 'N1' (a0 : a1 : as) (a0 : as)
--- 'IRemS' ('IRemS' 'IRemZ') :: 'IRemove' 'N2' (a0 : a1 : a2 : as) (a0 : a1 : as)
--- @
---
--- And so on.
-data IRemove :: N -> [k] -> [k] -> * where
-  -- | Remove the head
-  IRemZ :: IRemove 'Z (a : as) as
-  -- | Remove some element in the tail
-  IRemS :: !(IRemove n as bs) -> IRemove ('S n) (a : as) (a : bs)
+type family Remove (n :: N) (as :: [k]) where
+  Remove n '[] = '[]
+  Remove 'Z (a : as) = as
+  Remove ('S n) (a : as) = a : Remove n as
 
--- | Signifies that the list @as@ has @n@th element, and removing it
--- yields @bs@.
---
--- Real instances of this class are defined inductively, but it can be
--- thought of as having the following instances:
---
--- @
--- instance 'IWithout' 'N0' (a0 : as) as
--- instance 'IWithout' 'N1' (a0 : a1 : as) (a0 : as)
--- instance 'IWithout' 'N2' (a0 : a1 : a2 : as) (a0 : a1 : as)
--- @
---
--- And so on.
---
--- Because of the functional dependency, this class can be used (and
--- often is) to introduce @bs@ if @n@ and @as@ are known from some
--- other source (such as 'IIndex').
---
--- This class is a constraint-level equivalent of 'IRemove';
--- conversion goes both ways, through 'iwithout' in one direction and
--- 'Witness' instance in the other.
-class IWithout (n :: N) (as :: [k]) (bs :: [k]) | n as -> bs where
-  -- | A witness of the relationship in question.
-  iwithout :: IRemove n as bs
-
-instance IWithout 'Z (a : as) as where
-  iwithout = IRemZ
-
-instance IWithout n as bs => IWithout ('S n) (a : as) (a : bs) where
-  iwithout = IRemS iwithout
-
-instance Witness ØC (IWithout n as bs) (IRemove n as bs) where
-  f \\ IRemZ = f
-  f \\ IRemS r = f \\ r
-
--- | A value of type @'IReplace' n as b bs@ witnesses that the list
--- @as@ has @n@th element, and replacing it with @b@ yields @bs@.
---
--- Examples:
---
--- @
--- 'IRepZ' :: 'IReplace' 'N0' (a0 : as) b (b : as)
--- 'IRepS' 'IRepZ' :: 'IReplace' 'N1' (a0 : a1 : as) (a0 : b : as)
--- 'IRepS' ('IRepS' 'IRepZ') :: 'IReplace' 'N2' (a0 : a1 : a2 : as) (a0 : a1 : b : as)
--- @
---
--- And so on.
-data IReplace :: N -> [k] -> k -> [k] -> * where
-  -- | Replace the head
-  IRepZ :: IReplace 'Z (a : as) b (b : as)
-  -- | Replace some element in the tail
-  IRepS :: !(IReplace n as b bs) -> IReplace ('S n) (a : as) b (a : bs)
-
--- | Signifies that the list @as@ has @n@th element, and replacing it
--- with @b@ yields list @bs@.
---
--- Real instances of the class are defined inductively, but it can be
--- thought of as having the following instances:
---
--- @
--- instance 'IReplaced' 'N0' (a : as) b (b : as)
--- instance 'IReplaced' 'N1' (a0 : a1 : as) b (a0 : b : as)
--- instance 'IReplaced' 'N2' (a0 : a1 : a2 : as) b (a0 : a1 : b : as)
--- @
---
--- And so on.
---
--- Because of the functional dependency, this class is typically used
--- to /introduce/ type bs in the context where all other parameters
--- are known.
---
--- This is a constraint-level equivalent of 'IReplace'; the conversion
--- goes both ways, through 'ireplace' in one direction and 'Witness'
--- instance in another.
-class IReplaced n as b bs | n as b -> bs where
-  -- | Witness of the relationship in question
-  ireplace :: IReplace n as b bs
-
-instance IReplaced 'Z (a : as) b (b : as) where
-  ireplace = IRepZ
-
-instance IReplaced n as b bs => IReplaced ('S n) (a : as) b (a : bs) where
-  ireplace = IRepS ireplace
-
-instance Witness ØC (IReplaced n as b bs) (IReplace n as b bs) where
-  f \\ IRepZ = f
-  f \\ IRepS r = f \\ r
+type family Replace (n :: N) (as :: [k]) (a :: k) where
+  Replace n '[] a = '[]
+  Replace 'Z (a : as) b = b : as
+  Replace ('S n) (a : as) b = a : Replace n as b
 
 -- | Produce an index of a replaced element in the new list.
-replaceIdx :: IReplace n as b bs -> IIndex n bs b
-replaceIdx IRepZ = IIZ
-replaceIdx (IRepS r) = IIS (replaceIdx r)
+replaceIdx :: IIndex n as a -> IIndex n (Replace n as b) b
+replaceIdx IIZ = IIZ
+replaceIdx (IIS n) = IIS (replaceIdx n)
 
 -- | Extract the only term of a single-term sum.
 fsumOnly :: FSum '[f] a -> f a
@@ -290,23 +190,13 @@ fsumOnly (FInR f) = absurd . nilFSum $ f
 -- And so on.  In all cases, 'Left' means that the sum is not
 -- represented by the element requested, and 'Right' that it is.
 fdecompIdx ::
-     IWithout n fs gs
-  => IIndex n fs f -- ^ An index of an element to be extracted
-  -> FSum fs a -- ^ A sum which may or may not be represented by the
-     -- element in question
-  -> Either (FSum gs a) (f a) -- ^ Either the requested element, or
-     -- some other one.
-fdecompIdx = loop iwithout
-  where
-    loop ::
-         IRemove n fs gs
-      -> IIndex n fs f
-      -> FSum fs a
-      -> Either (FSum gs a) (f a)
-    loop _ IIZ (FInL f) = Right f
-    loop IRemZ IIZ (FInR g) = Left g
-    loop (IRemS _) (IIS _) (FInL g) = Left (FInL g)
-    loop (IRemS r) (IIS n) (FInR fs) = first FInR (loop r n fs)
+     IIndex n fs f -- ^ An index of an element to be extracted
+  -> FSum fs a
+  -> Either (FSum (Remove n fs) a) (f a)
+fdecompIdx IIZ (FInL x) = Right x
+fdecompIdx IIZ (FInR x) = Left x
+fdecompIdx (IIS _) (FInL x) = Left (FInL x)
+fdecompIdx (IIS n) (FInR x) = first FInR (fdecompIdx n x)
 
 -- | Decompose the sum like 'fdecompIdx', but instead of the sum
 -- /without/ the requested element, return the sum with the requested
@@ -328,23 +218,11 @@ fdecompIdx = loop iwithout
 --
 -- And so on.
 fdecompReplaceIdx ::
-     IReplaced n fs g gs
-  => IIndex n fs f
-  -> p g
-  -> FSum fs a
-  -> Either (FSum gs a) (f a)
-fdecompReplaceIdx = loop ireplace
-  where
-    loop ::
-         IReplace n fs g gs
-      -> IIndex n fs f
-      -> p g
-      -> FSum fs a
-      -> Either (FSum gs a) (f a)
-    loop _ IIZ _ (FInL f) = Right f
-    loop IRepZ IIZ _ (FInR g) = Left (FInR g)
-    loop (IRepS _) (IIS _) _ (FInL g) = Left (FInL g)
-    loop (IRepS r) (IIS n) p (FInR fs) = first FInR (loop r n p fs)
+     IIndex n fs f -> p g -> FSum fs a -> Either (FSum (Replace n fs g) a) (f a)
+fdecompReplaceIdx IIZ _ (FInL x) = Right x
+fdecompReplaceIdx IIZ _ (FInR x) = Left (FInR x)
+fdecompReplaceIdx (IIS _) _ (FInL x) = Left (FInL x)
+fdecompReplaceIdx (IIS n) p (FInR x) = first FInR (fdecompReplaceIdx n p x)
 
 -- | Replace one functor in the 'FSum' by another by transforming the
 -- old one into a new one.
@@ -364,25 +242,16 @@ fdecompReplaceIdx = loop ireplace
 -- functor at requested index, the old value will be used (and the
 -- supplied function won't be called).
 freplaceIdx ::
-     IReplaced n fs g gs
-  => IIndex n fs f -- ^ An index of a functor to be replaced.
+     IIndex n fs f -- ^ An index of a functor to be replaced.
   -> (f a -> g a) -- ^ A function used to transform old functor into a
      -- new one.
   -> FSum fs a -- ^ An old sum, which may or may not be represented by
      -- the functor in question.
-  -> FSum gs a -- ^ Resulting sum.
-freplaceIdx = loop ireplace
-  where
-    loop ::
-         IReplace n fs g gs
-      -> IIndex n fs f
-      -> (f a -> g a)
-      -> FSum fs a
-      -> FSum gs a
-    loop IRepZ IIZ h (FInL f) = FInL (h f)
-    loop IRepZ IIZ _ (FInR g) = FInR g
-    loop (IRepS _) (IIS _) _ (FInL g) = FInL g
-    loop (IRepS r) (IIS n) h (FInR fs) = FInR (loop r n h fs)
+  -> FSum (Replace n fs g) a
+freplaceIdx IIZ f (FInL x) = FInL (f x)
+freplaceIdx IIZ _ (FInR x) = FInR x
+freplaceIdx (IIS _) _ (FInL x) = FInL x
+freplaceIdx (IIS n) f (FInR x) = FInR (freplaceIdx n f x)
 
 -- | Inject an element in the sum at the specified position.
 --
@@ -463,28 +332,19 @@ finr _ = loop (known :: Length fs)
 -- so if such errors arise, a likely cause is trying to 'fuseSum' a term
 -- with itself.
 fuseSum ::
-     forall n m fs gs f a. (IWithout n fs gs, (n == m) ~ 'False)
+     ((n == m) ~ 'False)
   => IIndex n fs f -- ^ The index of the term to be moved.
   -> IIndex m fs f -- ^ The index of the term to be kept.
   -> FSum fs a
-  -> FSum gs a
-fuseSum = loop (iwithout :: IRemove n fs gs)
-  where
-    loop ::
-         (n' == m') ~ 'False
-      => IRemove n' fs' gs'
-      -> IIndex n' fs' f
-      -> IIndex m' fs' f
-      -> FSum fs' a
-      -> FSum gs' a
-    loop IRemZ IIZ (IIS m) (FInL f) = finjectIdx m f
-    loop IRemZ IIZ (IIS _) (FInR other) = other
-    loop r@(IRemS _) n@(IIS _) IIZ fsum =
-      case fdecompIdx n fsum \\ r of
-        Right f -> FInL f
-        Left other -> other
-    loop (IRemS _) (IIS _) (IIS _) (FInL f) = FInL f
-    loop (IRemS r) (IIS n) (IIS m) (FInR other) = FInR (loop r n m other)
+  -> FSum (Remove n fs) a
+fuseSum IIZ (IIS m) (FInL x) = finjectIdx m x
+fuseSum IIZ (IIS _) (FInR y) = y
+fuseSum n@(IIS _) IIZ fsum =
+  case fdecompIdx n fsum of
+    Right x -> FInL x
+    Left y -> y
+fuseSum (IIS _) (IIS _) (FInL x) = FInL x
+fuseSum (IIS n) (IIS m) (FInR y) = FInR (fuseSum n m y)
 
 -- | Unify two terms in the sum by transforming them into a common
 -- functor, discarding the first term and replacing the second.
@@ -492,46 +352,40 @@ fuseSum = loop (iwithout :: IRemove n fs gs)
 -- Specialised to different indices, the type looks like this:
 --
 -- @
--- \f g -> 'fuseSumWith' f g i0 i1
+-- \\f g -> 'fuseSumWith' f g i0 i1
 --   :: (f0 a -> h a) -> (f1 a -> h a) -> 'FSum' (f0 : f1 : fs) a -> 'FSum' (h : as) a
 --
--- \f g -> 'fuseSumWith' f g i0 i2
+-- \\f g -> 'fuseSumWith' f g i0 i2
 --   :: (f0 a -> h a) -> (f2 a -> h a) -> 'FSum' (f0 : f1 : f2 : fs) a -> 'FSum' (f1 : h : fs) a
 --
--- \f g -> 'fuseSumWith' f g i2 i0
+-- \\f g -> 'fuseSumWith' f g i2 i0
 --   :: (f2 a -> h a) -> (f0 a -> h a) -> 'FSum' (f0 : f1 : f2 : fs) a -> 'FSum' (h : f1 : fs) a
 -- @
 fuseSumWith ::
-     forall n m fs gs hs f g h a.
-     (IReplaced m fs h gs, IWithout n gs hs, (n == m) ~ 'False)
-  => (f a -> h a)
-  -> (g a -> h a)
-  -> IIndex n fs f
-  -> IIndex m fs g
+     forall n m f g h a fs. ((n == m) ~ 'False)
+  => (f a -> h a) -- ^ Transform first fused element.
+  -> (g a -> h a) -- ^ Transform second fused element.
+  -> IIndex n fs f -- ^ Index of removed element.
+  -> IIndex m fs g -- ^ Index of replaced element.
   -> FSum fs a
-  -> FSum hs a
-fuseSumWith ft gt =
-  loop (ireplace :: IReplace m fs h gs) (iwithout :: IRemove n gs hs)
+  -> FSum (Remove n (Replace m fs h)) a
+fuseSumWith f g = loop
   where
     loop ::
-         (n' == m') ~ 'False
-      => IReplace m' fs' h gs'
-      -> IRemove n' gs' hs'
-      -> IIndex n' fs' f
+         forall n' m' fs'. (n' == m') ~ 'False
+      => IIndex n' fs' f
       -> IIndex m' fs' g
       -> FSum fs' a
-      -> FSum hs' a
-    loop (IRepS rep) IRemZ IIZ (IIS _) (FInL f) =
-      finjectIdx (replaceIdx rep) (ft f)
-    loop (IRepS rep) IRemZ IIZ (IIS m) (FInR fs) = freplaceIdx m gt fs \\ rep
-    loop IRepZ (IRemS _) (IIS _) IIZ (FInL g) = FInL (gt g)
-    loop IRepZ (IRemS irem) (IIS n) IIZ (FInR fs) =
-      case fdecompIdx n fs \\ irem of
-        Right f -> FInL (ft f)
+      -> FSum (Remove n' (Replace m' fs' h)) a
+    loop IIZ (IIS m) (FInL x) = finjectIdx (replaceIdx m) (f x)
+    loop IIZ (IIS m) (FInR y) = freplaceIdx m g y
+    loop (IIS _) IIZ (FInL x) = FInL (g x)
+    loop (IIS n) IIZ (FInR y) =
+      case fdecompIdx n y of
+        Right x -> FInL (f x)
         Left other -> FInR other
-    loop (IRepS _) (IRemS _) (IIS _) (IIS _) (FInL f) = FInL f
-    loop (IRepS rep) (IRemS irem) (IIS n) (IIS m) (FInR other) =
-      FInR (loop rep irem n m other)
+    loop (IIS _) (IIS _) (FInL x) = FInL x
+    loop (IIS n) (IIS m) (FInR y) = FInR (loop n m y)
 
 -- | Unify /all/ of the terms in the sum, if they are all identical
 -- (which is the meaning of a rather weird-looking constraint).

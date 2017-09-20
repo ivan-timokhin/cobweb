@@ -48,7 +48,7 @@ import Cobweb.Core (Awaiting, Yielding, awaitOn, yieldOn)
 import Cobweb.Internal
        (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF))
 import Cobweb.Type.Combinators
-       (All, IIndex, IWithout, fdecompIdx, finl, finr, i0, i1, i2, i3)
+       (All, IIndex, Remove, fdecompIdx, finl, finr, i0, i1, i2, i3)
 
 -- $specialised
 --
@@ -130,12 +130,10 @@ zipping3 = zippingWith3 (,,)
 
 -- | Zip two channels together via a supplied function.
 zipsWith ::
-     forall n k lcs rcs lcs' rcs' lc rc c m r.
-     ( IWithout n lcs lcs'
-     , IWithout k rcs rcs'
-     , Known Length lcs'
-     , All Functor lcs'
-     , All Functor rcs'
+     forall n k lcs rcs lc rc c m r.
+     ( Known Length (Remove n lcs)
+     , All Functor (Remove n lcs)
+     , All Functor (Remove k rcs)
      , Functor c
      , Functor m
      )
@@ -145,10 +143,13 @@ zipsWith ::
   -> IIndex k rcs rc -- ^ Index of the zipped channel on the second 'Node'.
   -> Node lcs m r
   -> Node rcs m r
-  -> Node (c : (lcs' ++ rcs')) m r
+  -> Node (c : (Remove n lcs ++ Remove k rcs)) m r
 zipsWith combine n k = flip loopLeft
   where
-    loopLeft :: Node rcs m r -> Node lcs m r -> Node (c : (lcs' ++ rcs')) m r
+    loopLeft ::
+         Node rcs m r
+      -> Node lcs m r
+      -> Node (c : (Remove n lcs ++ Remove k rcs)) m r
     loopLeft right left =
       Node $
       case getNode left of
@@ -160,7 +161,9 @@ zipsWith combine n k = flip loopLeft
               ConnectF (FInR $ finl proxyR (fmap (loopLeft right) other))
             Right c -> getNode $ loopRight c right
     loopRight ::
-         lc (Node lcs m r) -> Node rcs m r -> Node (c : (lcs' ++ rcs')) m r
+         lc (Node lcs m r)
+      -> Node rcs m r
+      -> Node (c : (Remove n lcs ++ Remove k rcs)) m r
     loopRight left right =
       Node $
       case getNode right of
@@ -172,9 +175,9 @@ zipsWith combine n k = flip loopLeft
               ConnectF (FInR $ finr proxyL (fmap (loopRight left) other))
             Right c ->
               ConnectF (FInL $ fmap (uncurry (flip loopLeft)) (combine left c))
-    proxyL :: Proxy lcs'
+    proxyL :: Proxy (Remove n lcs)
     proxyL = Proxy
-    proxyR :: Proxy rcs'
+    proxyR :: Proxy (Remove k rcs)
     proxyR = Proxy
 
 -- | Same as 'zipsWith', but use 'Applicative' instance of the common
@@ -192,11 +195,9 @@ zipsWith combine n k = flip loopLeft
 -- 'zips' = 'zipsWith' ('liftA2' (,))
 -- @
 zips ::
-     ( IWithout n lcs lcs'
-     , IWithout k rcs rcs'
-     , Known Length lcs'
-     , All Functor lcs'
-     , All Functor rcs'
+     ( Known Length (Remove n lcs)
+     , All Functor (Remove n lcs)
+     , All Functor (Remove k rcs)
      , Applicative c
      , Functor m
      )
@@ -204,5 +205,5 @@ zips ::
   -> IIndex k rcs c -- ^ Index of the zipped channel on the second 'Node'.
   -> Node lcs m r
   -> Node rcs m r
-  -> Node (c : (lcs' ++ rcs')) m r
+  -> Node (c : (Remove n lcs ++ Remove k rcs)) m r
 zips = zipsWith (liftA2 (,))

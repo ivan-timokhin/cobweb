@@ -52,7 +52,7 @@ import Data.Proxy (Proxy(Proxy))
 import Data.Type.Length (Length)
 import Data.Type.Sum.Lifted (FSum)
 import Type.Class.Known (Known)
-import Type.Class.Witness ((:-), Witness((\\)))
+import Type.Class.Witness (Witness((\\)))
 import Type.Family.List (type (++), Last, Null)
 import Type.Family.Nat (Len, Pred)
 import Data.Functor.Sum (Sum(InL, InR))
@@ -61,9 +61,8 @@ import Data.Functor.Product (Product(Pair))
 import Cobweb.Internal
        (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF))
 import Cobweb.Type.Combinators
-       (All, IIndex, IWithout, fdecompIdx, finl, finr, i0, lastIndex)
-import Cobweb.Type.Lemmata
-       (iwithoutNonEmpty, iwithoutRetainsLength)
+       (Remove, All, IIndex, fdecompIdx, finl, finr, i0, lastIndex)
+import Cobweb.Type.Lemmata (iwithoutRetainsLength)
 
 -- The functional dependency on Annihilate is very annoying, but in
 -- its absence GHC can't even figure out that @Awaiting a@ and
@@ -192,38 +191,36 @@ instance (Annihilate f1 g1, Annihilate f2 g2) =>
 -- However, the primary intended use of this operator is closer to the
 -- first group of types, and this generality should not be abused.
 (>->) ::
-     forall lcs lcs' r rcs' m a.
-     ( IWithout (Pred (Len lcs)) lcs lcs'
+     forall lcs r rcs' m a.
+     ( Null lcs ~ 'False
      , Known Length lcs
-     , All Functor lcs'
+     , All Functor (Remove (Pred (Len lcs)) lcs)
      , All Functor rcs'
      , Annihilate r (Last lcs)
      , Functor m
      )
   => Node lcs m a -- ^ ‘Upstream’ node.
   -> Node (r : rcs') m a -- ^ ‘Downstream’ node.
-  -> Node (lcs' ++ rcs') m a
-(>->) =
-  linkPipe_ \\
-  (iwithoutNonEmpty :: IWithout (Pred (Len lcs)) lcs lcs' :- (Null lcs ~ 'False)) \\
-  (iwithoutRetainsLength :: ( IWithout (Pred (Len lcs)) lcs lcs'
-                            , Known Length lcs) :- Known Length lcs')
+  -> Node (Remove (Pred (Len lcs)) lcs ++ rcs') m a
+(>->) = linkPipe_ \\ iwithoutRetainsLength idx
+  where
+    idx :: IIndex (Pred (Len lcs)) lcs (Last lcs)
+    idx = lastIndex
 
 infixl 8 >->
 
 linkPipe_ ::
-     ( IWithout (Pred (Len lcs)) lcs lcs'
-     , Known Length lcs
-     , Known Length lcs'
+     ( Known Length lcs
+     , Known Length (Remove (Pred (Len lcs)) lcs)
      , Null lcs ~ 'False
-     , All Functor lcs'
+     , All Functor (Remove (Pred (Len lcs)) lcs)
      , All Functor rcs'
      , Annihilate r (Last lcs)
      , Functor m
      )
   => Node lcs m a
   -> Node (r : rcs') m a
-  -> Node (lcs' ++ rcs') m a
+  -> Node (Remove (Pred (Len lcs)) lcs ++ rcs') m a
 linkPipe_ = linkOn lastIndex i0
 
 -- | A depth-first traversal of a communication tree, starting from a
@@ -300,44 +297,44 @@ infixl 7 |->
 -- "3Cz"
 -- @
 (>-|) ::
-  forall lcs rcs lcs' rcs' m a.
-     ( IWithout (Pred (Len lcs)) lcs lcs'
-     , IWithout (Pred (Len rcs)) rcs rcs'
+     forall lcs rcs m a.
+     ( Null lcs ~ 'False
+     , Null rcs ~ 'False
      , Known Length lcs
      , Known Length rcs
-     , All Functor lcs'
-     , All Functor rcs'
+     , All Functor (Remove (Pred (Len lcs)) lcs)
+     , All Functor (Remove (Pred (Len rcs)) rcs)
      , Annihilate (Last rcs) (Last lcs)
      , Functor m
      )
   => Node lcs m a -- ^ Attached node.
   -> Node rcs m a -- ^ ‘Consumer’.
-  -> Node (rcs' ++ lcs') m a
+  -> Node (Remove (Pred (Len rcs)) rcs ++ Remove (Pred (Len lcs)) lcs) m a
 (>-|) =
-  linkConsumer_ \\
-  (iwithoutNonEmpty :: IWithout (Pred (Len lcs)) lcs lcs' :- (Null lcs ~ 'False)) \\
-  (iwithoutNonEmpty :: IWithout (Pred (Len rcs)) rcs rcs' :- (Null rcs ~ 'False)) \\
-  (iwithoutRetainsLength :: ( IWithout (Pred (Len rcs)) rcs rcs'
-                            , Known Length rcs) :- Known Length rcs')
+  linkConsumer_ \\ iwithoutRetainsLength lidx \\ iwithoutRetainsLength ridx
+  where
+    lidx :: IIndex (Pred (Len lcs)) lcs (Last lcs)
+    lidx = lastIndex
+    ridx :: IIndex (Pred (Len rcs)) rcs (Last rcs)
+    ridx = lastIndex
 
 infixr 7 >-|
 
 linkConsumer_ ::
-     ( IWithout (Pred (Len lcs)) lcs lcs'
-     , IWithout (Pred (Len rcs)) rcs rcs'
-     , Null lcs ~ 'False
+     ( Null lcs ~ 'False
      , Null rcs ~ 'False
-     , Known Length rcs'
+     , Known Length (Remove (Pred (Len lcs)) lcs)
+     , Known Length (Remove (Pred (Len rcs)) rcs)
      , Known Length lcs
      , Known Length rcs
      , Annihilate (Last rcs) (Last lcs)
-     , All Functor lcs'
-     , All Functor rcs'
+     , All Functor (Remove (Pred (Len lcs)) lcs)
+     , All Functor (Remove (Pred (Len rcs)) rcs)
      , Functor m
      )
   => Node lcs m a
   -> Node rcs m a
-  -> Node (rcs' ++ lcs') m a
+  -> Node (Remove (Pred (Len rcs)) rcs ++ Remove (Pred (Len lcs)) lcs) m a
 linkConsumer_ = linkOn' lastIndex lastIndex
 
 -- | Link nodes on a specified pair of channels, putting first node's
@@ -349,12 +346,10 @@ linkConsumer_ = linkOn' lastIndex lastIndex
 -- ('>->') = 'linkOn' 'lastIndex' 'i0'
 -- @
 linkOn ::
-     forall n k lcs lcs' lc rcs rcs' rc m r.
-     ( IWithout n lcs lcs'
-     , IWithout k rcs rcs'
-     , Known Length lcs'
-     , All Functor lcs'
-     , All Functor rcs'
+     forall n k lcs lc rcs rc m r.
+     ( Known Length (Remove n lcs)
+     , All Functor (Remove n lcs)
+     , All Functor (Remove k rcs)
      , Annihilate rc lc
      , Functor m
      )
@@ -363,13 +358,13 @@ linkOn ::
      -- second node.
   -> Node lcs m r
   -> Node rcs m r
-  -> Node (lcs' ++ rcs') m r
+  -> Node (Remove n lcs ++ Remove k rcs) m r
 linkOn n k =
   genericLinkOn (fmap Identity) Identity (finl proxyR) (finr proxyL) n k .
   Identity
   where
-    proxyR = Proxy :: Proxy rcs'
-    proxyL = Proxy :: Proxy lcs'
+    proxyR = Proxy :: Proxy (Remove k rcs)
+    proxyL = Proxy :: Proxy (Remove n lcs)
 
 -- | Link nodes on a specified pair of channels, putting second node's
 -- channels first in the result.
@@ -381,12 +376,10 @@ linkOn n k =
 -- ('>-|') = 'linkOn'' 'lastIndex' 'lastIndex'
 -- @
 linkOn' ::
-     forall n k lcs lcs' lc rcs rcs' rc m r.
-     ( IWithout n lcs lcs'
-     , IWithout k rcs rcs'
-     , Known Length rcs'
-     , All Functor lcs'
-     , All Functor rcs'
+     forall n k lcs lc rcs rc m r.
+     ( Known Length (Remove k rcs)
+     , All Functor (Remove n lcs)
+     , All Functor (Remove k rcs)
      , Annihilate rc lc
      , Functor m
      )
@@ -395,13 +388,13 @@ linkOn' ::
      -- second node.
   -> Node lcs m r
   -> Node rcs m r
-  -> Node (rcs' ++ lcs') m r
+  -> Node (Remove k rcs ++ Remove n lcs) m r
 linkOn' n k =
   genericLinkOn (fmap Identity) Identity (finr proxyR) (finl proxyL) n k .
   Identity
   where
-    proxyR = Proxy :: Proxy rcs'
-    proxyL = Proxy :: Proxy lcs'
+    proxyR = Proxy :: Proxy (Remove k rcs)
+    proxyL = Proxy :: Proxy (Remove n lcs)
 
 -- $duplex
 --
@@ -446,10 +439,10 @@ linkOn' n k =
 --   -> 'Cobweb.Duplex.Proxy' a' a c' c m r
 -- @
 (+>>) ::
-     forall lcs lcs' lreq lresp rcs' rreq rresp m a.
-     ( IWithout (Pred (Len lcs)) lcs lcs'
-     , Known Length lcs
-     , All Functor lcs'
+     forall lcs lreq lresp rcs' rreq rresp m a.
+     ( Known Length lcs
+     , Null lcs ~ 'False
+     , All Functor (Remove (Pred (Len lcs)) lcs)
      , All Functor rcs'
      , Last lcs ~ Compose lresp lreq
      , Annihilate lreq rresp
@@ -457,13 +450,13 @@ linkOn' n k =
      , Functor m
      )
   => lreq (Node lcs m a) -- ^ Upstream ‘server’ node.
-  -> Node (Compose rresp rreq : rcs') m a -- ^ Downstream ‘client’ node.
-  -> Node (lcs' ++ rcs') m a
-(+>>) =
-  linkDuplexPullPipe_ \\
-  (iwithoutNonEmpty :: IWithout (Pred (Len lcs)) lcs lcs' :- (Null lcs ~ 'False)) \\
-  (iwithoutRetainsLength :: ( IWithout (Pred (Len lcs)) lcs lcs'
-                            , Known Length lcs) :- Known Length lcs')
+  -> Node (Compose rresp rreq : rcs') m a -- ^ Downstream ‘client’
+                                          -- node.
+  -> Node (Remove (Pred (Len lcs)) lcs ++ rcs') m a
+(+>>) = linkDuplexPullPipe_ \\ iwithoutRetainsLength lidx
+  where
+    lidx :: IIndex (Pred (Len lcs)) lcs (Last lcs)
+    lidx = lastIndex
 
 infixr 5 +>>
 
@@ -487,9 +480,9 @@ infixr 5 +>>
 --   -> (c' -> 'Cobweb.Duplex.Proxy' a' a c' c m r)
 -- @
 (>+>) ::
-     ( IWithout (Pred (Len lcs)) lcs lcs'
-     , Known Length lcs
-     , All Functor lcs'
+     ( Known Length lcs
+     , Null lcs ~ 'False
+     , All Functor (Remove (Pred (Len lcs)) lcs)
      , All Functor rcs'
      , Last lcs ~ Compose lresp lreq
      , Annihilate lreq rresp
@@ -500,18 +493,17 @@ infixr 5 +>>
   => lreq (Node lcs m a) -- ^ Upstream ‘server’ node.
   -> rreq' (Node (Compose rresp rreq : rcs') m a) -- ^ Downstream
      -- ‘client’ node.
-  -> rreq' (Node (lcs' ++ rcs') m a)
+  -> rreq' (Node (Remove (Pred (Len lcs)) lcs ++ rcs') m a)
 (>+>) left = fmap (left +>>)
 
 infixl 6 >+>
 
 linkDuplexPullPipe_ ::
-     ( IWithout (Pred (Len lcs)) lcs lcs'
-     , All Functor lcs'
+     ( All Functor (Remove (Pred (Len lcs)) lcs)
      , All Functor rcs'
      , Null lcs ~ 'False
      , Known Length lcs
-     , Known Length lcs'
+     , Known Length (Remove (Pred (Len lcs)) lcs)
      , Last lcs ~ Compose lresp lreq
      , Annihilate lreq rresp
      , Annihilate rreq lresp
@@ -519,7 +511,7 @@ linkDuplexPullPipe_ ::
      )
   => lreq (Node lcs m r)
   -> Node (Compose rresp rreq : rcs') m r
-  -> Node (lcs' ++ rcs') m r
+  -> Node (Remove (Pred (Len lcs)) lcs ++ rcs') m r
 linkDuplexPullPipe_ = linkOnDuplex lastIndex i0
 
 -- | Push-based linking of two 'Node's.
@@ -554,10 +546,10 @@ linkDuplexPullPipe_ = linkOnDuplex lastIndex i0
 --   -> 'Cobweb.Duplex.Proxy' a' a c' c m r
 -- @
 (>>~) ::
-     forall lcs lcs' lreq lresp rcs' rreq rresp m a.
-     ( IWithout (Pred (Len lcs)) lcs lcs'
-     , Known Length lcs
-     , All Functor lcs'
+     forall lcs lreq lresp rcs' rreq rresp m a.
+     ( Known Length lcs
+     , Null lcs ~ 'False
+     , All Functor (Remove (Pred (Len lcs)) lcs)
      , All Functor rcs'
      , Last lcs ~ Compose lresp lreq
      , Annihilate lreq rresp
@@ -567,12 +559,11 @@ linkDuplexPullPipe_ = linkOnDuplex lastIndex i0
   => Node lcs m a -- ^ Upstream ‘client’ node.
   -> rreq (Node (Compose rresp rreq : rcs') m a) -- ^ Downstream
      -- ‘server’ node.
-  -> Node (lcs' ++ rcs') m a
-(>>~) =
-  linkDuplexPushPipe_ \\
-  (iwithoutNonEmpty :: IWithout (Pred (Len lcs)) lcs lcs' :- (Null lcs ~ 'False)) \\
-  (iwithoutRetainsLength :: ( IWithout (Pred (Len lcs)) lcs lcs'
-                            , Known Length lcs) :- Known Length lcs')
+  -> Node (Remove (Pred (Len lcs)) lcs ++ rcs') m a
+(>>~) = linkDuplexPushPipe_ \\ iwithoutRetainsLength lidx
+  where
+    lidx :: IIndex (Pred (Len lcs)) lcs (Last lcs)
+    lidx = lastIndex
 
 infixl 5 >>~
 
@@ -596,9 +587,9 @@ infixl 5 >>~
 --   -> (a -> 'Cobweb.Duplex.Proxy' a' a c' c m r)
 -- @
 (>~>) ::
-     ( IWithout (Pred (Len lcs)) lcs lcs'
-     , Known Length lcs
-     , All Functor lcs'
+     ( Known Length lcs
+     , Null lcs ~ 'False
+     , All Functor (Remove (Pred (Len lcs)) lcs)
      , All Functor rcs'
      , Functor lreq'
      , Last lcs ~ Compose lresp lreq
@@ -609,18 +600,17 @@ infixl 5 >>~
   => lreq' (Node lcs m a) -- ^ Upstream ‘client’ node.
   -> rreq (Node (Compose rresp rreq : rcs') m a) -- ^ Downstream
      -- ‘server’ node.
-  -> lreq' (Node (lcs' ++ rcs') m a)
+  -> lreq' (Node (Remove (Pred (Len lcs)) lcs ++ rcs') m a)
 left >~> right = fmap (>>~ right) left
 
 infixl 6 >~>
 
 linkDuplexPushPipe_ ::
-     ( IWithout (Pred (Len lcs)) lcs lcs'
-     , All Functor lcs'
+     ( All Functor (Remove (Pred (Len lcs)) lcs)
      , All Functor rcs'
      , Null lcs ~ 'False
      , Known Length lcs
-     , Known Length lcs'
+     , Known Length (Remove (Pred (Len lcs)) lcs)
      , Last lcs ~ Compose lresp lreq
      , Annihilate lreq rresp
      , Annihilate rreq lresp
@@ -628,7 +618,7 @@ linkDuplexPushPipe_ ::
      )
   => Node lcs m r
   -> rreq (Node (Compose rresp rreq : rcs') m r)
-  -> Node (lcs' ++ rcs') m r
+  -> Node (Remove (Pred (Len lcs)) lcs ++ rcs') m r
 linkDuplexPushPipe_ = flip (linkOnDuplex' i0 lastIndex)
 
 -- | @('|>~')@ is to @('>>~')@ what @('|->')@ is to @('>->')@.
@@ -649,13 +639,13 @@ infixl 4 |>~
 
 -- | @('+>|')@ is to @('+>>')@ what @('>-|')@ is to @('>->')@.
 (+>|) ::
-     forall lcs lcs' rcs rcs' lreq lresp rresp rreq m a.
-     ( IWithout (Pred (Len lcs)) lcs lcs'
-     , IWithout (Pred (Len rcs)) rcs rcs'
-     , Known Length lcs
+     forall lcs rcs lreq lresp rresp rreq m a.
+     ( Known Length lcs
      , Known Length rcs
-     , All Functor lcs'
-     , All Functor rcs'
+     , Null lcs ~ 'False
+     , Null rcs ~ 'False
+     , All Functor (Remove (Pred (Len lcs)) lcs)
+     , All Functor (Remove (Pred (Len rcs)) rcs)
      , Last lcs ~ Compose lresp lreq
      , Last rcs ~ Compose rresp rreq
      , Annihilate lreq rresp
@@ -664,24 +654,20 @@ infixl 4 |>~
      )
   => lreq (Node lcs m a) -- ^ A ‘server’ node.
   -> Node rcs m a -- ^ A ‘client’ node.
-  -> Node (rcs' ++ lcs') m a
-(+>|) =
-  linkConsumerDuplex_ \\
-  (iwithoutNonEmpty :: IWithout (Pred (Len lcs)) lcs lcs' :- (Null lcs ~ 'False)) \\
-  (iwithoutNonEmpty :: IWithout (Pred (Len rcs)) rcs rcs' :- (Null rcs ~ 'False)) \\
-  (iwithoutRetainsLength :: ( IWithout (Pred (Len rcs)) rcs rcs'
-                            , Known Length rcs) :- Known Length rcs')
+  -> Node (Remove (Pred (Len rcs)) rcs ++ Remove (Pred (Len lcs)) lcs) m a
+(+>|) = linkConsumerDuplex_ \\ iwithoutRetainsLength ridx
+  where
+    ridx :: IIndex (Pred (Len rcs)) rcs (Last rcs)
+    ridx = lastIndex
 
 infixr 4 +>|
 
 linkConsumerDuplex_ ::
-     ( IWithout (Pred (Len lcs)) lcs lcs'
-     , IWithout (Pred (Len rcs)) rcs rcs'
-     , Known Length lcs
+     ( Known Length lcs
      , Known Length rcs
-     , Known Length rcs'
-     , All Functor lcs'
-     , All Functor rcs'
+     , Known Length (Remove (Pred (Len rcs)) rcs)
+     , All Functor (Remove (Pred (Len lcs)) lcs)
+     , All Functor (Remove (Pred (Len rcs)) rcs)
      , Null lcs ~ 'False
      , Null rcs ~ 'False
      , Last lcs ~ Compose lresp lreq
@@ -692,18 +678,16 @@ linkConsumerDuplex_ ::
      )
   => lreq (Node lcs m a)
   -> Node rcs m a
-  -> Node (rcs' ++ lcs') m a
+  -> Node (Remove (Pred (Len rcs)) rcs ++ Remove (Pred (Len lcs)) lcs) m a
 linkConsumerDuplex_ = linkOnDuplex' lastIndex lastIndex
 
 -- | Link nodes on a specified pair of duplex channels, putting first
 -- (‘server’) node's channels first in the result.
 linkOnDuplex ::
-     forall n k lcs lcs' lresp lreq rcs rcs' rresp rreq m r.
-     ( IWithout n lcs lcs'
-     , IWithout k rcs rcs'
-     , Known Length lcs'
-     , All Functor lcs'
-     , All Functor rcs'
+     forall n k lcs lresp lreq rcs rresp rreq m r.
+     ( Known Length (Remove n lcs)
+     , All Functor (Remove n lcs)
+     , All Functor (Remove k rcs)
      , Annihilate lreq rresp
      , Annihilate rreq lresp
      , Functor m
@@ -714,21 +698,21 @@ linkOnDuplex ::
      -- channel on the ‘client’ node.
   -> lreq (Node lcs m r) -- ^ ‘Server’ node.
   -> Node rcs m r -- ^ ‘Client’ node.
-  -> Node (lcs' ++ rcs') m r
+  -> Node (Remove n lcs ++ Remove k rcs) m r
 linkOnDuplex = genericLinkOn getCompose getCompose (finl proxyR) (finr proxyL)
   where
-    proxyR = Proxy :: Proxy rcs'
-    proxyL = Proxy :: Proxy lcs'
+    proxyR :: Proxy (Remove k rcs)
+    proxyR = Proxy
+    proxyL :: Proxy (Remove n lcs)
+    proxyL = Proxy
 
 -- | Link nodes on a specified pair of duplex channels, putting second
 -- (‘client’) node's channels first in the result.
 linkOnDuplex' ::
-     forall n k lcs lcs' lresp lreq rcs rcs' rresp rreq m r.
-     ( IWithout n lcs lcs'
-     , IWithout k rcs rcs'
-     , Known Length rcs'
-     , All Functor lcs'
-     , All Functor rcs'
+     forall n k lcs lresp lreq rcs rresp rreq m r.
+     ( Known Length (Remove k rcs)
+     , All Functor (Remove n lcs)
+     , All Functor (Remove k rcs)
      , Annihilate lreq rresp
      , Annihilate rreq lresp
      , Functor m
@@ -739,20 +723,20 @@ linkOnDuplex' ::
      -- channel on the ‘client’ node.
   -> lreq (Node lcs m r) -- ^ ‘Server’ node.
   -> Node rcs m r -- ^ ‘Client’ node.
-  -> Node (rcs' ++ lcs') m r
+  -> Node (Remove k rcs ++ Remove n lcs) m r
 linkOnDuplex' = genericLinkOn getCompose getCompose (finr proxyR) (finl proxyL)
   where
-    proxyR = Proxy :: Proxy rcs'
-    proxyL = Proxy :: Proxy lcs'
+    proxyR :: Proxy (Remove k rcs)
+    proxyR = Proxy
+    proxyL :: Proxy (Remove n lcs)
+    proxyL = Proxy
 
 -- | The most generic linking function, used to implement all other
 -- function in this module.  Calling it directly is practically never
 -- needed.
 genericLinkOn ::
-     ( IWithout n lcs lcs'
-     , IWithout k rcs rcs'
-     , All Functor lcs'
-     , All Functor rcs'
+     ( All Functor (Remove n lcs)
+     , All Functor (Remove k rcs)
      , Annihilate lreq rresp
      , Annihilate rreq lresp
      , Functor m
@@ -761,9 +745,9 @@ genericLinkOn ::
      -- the first node to a duplex representation.
   -> (forall x. rc x -> rresp (rreq x)) -- ^ Convert the channel on
      -- the second node to a duplex representation.
-  -> (forall x. FSum lcs' x -> FSum rescs x) -- ^ Embed remaining
+  -> (forall x. FSum (Remove n lcs) x -> FSum rescs x) -- ^ Embed remaining
      -- channels of the first node into the resulting list.
-  -> (forall x. FSum rcs' x -> FSum rescs x) -- ^ Embed remaining
+  -> (forall x. FSum (Remove k rcs) x -> FSum rescs x) -- ^ Embed remaining
      -- channels of the second node into the resulting list.
   -> IIndex n lcs lc -- ^ The index of the linked channel on the first
                      -- node.

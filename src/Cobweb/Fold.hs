@@ -53,8 +53,8 @@ import Cobweb.Core (Producer, Yielding, run, yieldOn)
 import Cobweb.Internal
        (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF))
 import Cobweb.Type.Combinators
-       (All, IIndex, IReplace, IReplaced, IWithout, fdecompIdx,
-        fdecompReplaceIdx, i0, ireplace, replaceIdx)
+       (All, IIndex, Remove, Replace, fdecompIdx, fdecompReplaceIdx, i0,
+        replaceIdx)
 
 -- | Fold over values from a 'Producer', and provide both the fold
 -- result and the 'Producer' return value.
@@ -96,14 +96,14 @@ foldMNode_ comb seed fin = fmap fst . foldMNode comb seed fin
 -- | Fold over values provided on one of the 'Node' channels, and add
 -- the result to the return value.
 foldOn ::
-     (Functor m, IWithout n cs cs', All Functor cs')
+     (Functor m, All Functor (Remove n cs))
   => IIndex n cs (Yielding a) -- ^ The index of the channel to fold
                               -- over.
   -> (x -> a -> x) -- ^ Combining function.
   -> x -- ^ Seed.
   -> (x -> b) -- ^ Finalise accumulator.
   -> Node cs m r
-  -> Node cs' m (b, r)
+  -> Node (Remove n cs) m (b, r)
 foldOn n comb seed fin = loop seed
   where
     loop !z (Node node) =
@@ -118,13 +118,13 @@ foldOn n comb seed fin = loop seed
 
 -- | Same as 'foldOn', but discard original return value.
 foldOn_ ::
-     (Functor m, IWithout n cs cs', All Functor cs')
+     (Functor m, All Functor (Remove n cs))
   => IIndex n cs (Yielding a)
   -> (x -> a -> x)
   -> x
   -> (x -> b)
   -> Node cs m r
-  -> Node cs' m b
+  -> Node (Remove n cs) m b
 foldOn_ n comb seed fin = fmap fst . foldOn n comb seed fin
 
 -- | Same as 'foldOn', but with effects in the base monad.
@@ -132,13 +132,13 @@ foldOn_ n comb seed fin = fmap fst . foldOn n comb seed fin
 -- __Note:__ the action for seed is always run first, prior to
 -- anything in the 'Node'.
 foldMOn ::
-     (Functor m, IWithout n cs cs', All Functor cs')
+     (Functor m, All Functor (Remove n cs))
   => IIndex n cs (Yielding a)
   -> (x -> a -> m x)
   -> m x
   -> (x -> m b)
   -> Node cs m r
-  -> Node cs' m (b, r)
+  -> Node (Remove n cs) m (b, r)
 foldMOn n comb seed fin node' = Node (EffectF (fmap (flip loop node') seed))
   where
     loop !z (Node node) =
@@ -153,13 +153,13 @@ foldMOn n comb seed fin node' = Node (EffectF (fmap (flip loop node') seed))
 
 -- | Same as 'foldMOn', but discard original return value.
 foldMOn_ ::
-     (Functor m, IWithout n cs cs', All Functor cs')
+     (Functor m, All Functor (Remove n cs))
   => IIndex n cs (Yielding a)
   -> (x -> a -> m x)
   -> m x
   -> (x -> m b)
   -> Node cs m r
-  -> Node cs' m b
+  -> Node (Remove n cs) m b
 foldMOn_ n comb seed fin = fmap fst . foldMOn n comb seed fin
 
 -- | Strict left scan of a 'Node' on one of the channels
@@ -199,18 +199,17 @@ foldMOn_ n comb seed fin = fmap fst . foldMOn n comb seed fin
 --   -> 'Node' (c0 : c1 : 'Yielding' b : cs) m r
 -- @
 scanOn ::
-     forall m cs cs' n x a b r.
-     (Functor m, IReplaced n cs (Yielding b) cs', All Functor cs')
+     forall m cs n x a b r. (Functor m, All Functor (Replace n cs (Yielding b)))
   => IIndex n cs (Yielding a) -- ^ Index of the channel to scan over.
   -> (x -> a -> x) -- ^ Combining function.
   -> x -- ^ Seed.
   -> (x -> b) -- ^ Finalise accumulator (evaluated at every step to
      -- produce yielded value).
   -> Node cs m r
-  -> Node cs' m r
+  -> Node (Replace n cs (Yielding b)) m r
 scanOn n comb seed fin = (yieldOn n' (fin seed) >>) . loop seed
   where
-    n' = replaceIdx (ireplace :: IReplace n cs (Yielding b) cs')
+    n' = replaceIdx n
     loop !z (Node node) =
       Node $
       case node of
@@ -258,22 +257,21 @@ scanOn n comb seed fin = (yieldOn n' (fin seed) >>) . loop seed
 --   -> 'Node' (c0 : c1 : 'Yielding' b : cs) m r
 -- @
 scanOnM ::
-     forall m cs cs' n x a b r.
-     (Monad m, IReplaced n cs (Yielding b) cs', All Functor cs')
+     forall m cs n x a b r. (Monad m, All Functor (Replace n cs (Yielding b)))
   => IIndex n cs (Yielding a) -- ^ Index of the channel to scan over.
   -> (x -> a -> m x) -- ^ Combining function.
   -> m x -- ^ Seed.
   -> (x -> m b) -- ^ Finalising function (called for each intermediate
                 -- result).
   -> Node cs m r
-  -> Node cs' m r
+  -> Node (Replace n cs (Yielding b)) m r
 scanOnM n comb seed fin node = do
   !seed' <- lift seed
   b <- lift $ fin seed'
   yieldOn n' b
   loop seed' node
   where
-    n' = replaceIdx (ireplace :: IReplace n cs (Yielding b) cs')
+    n' = replaceIdx n
     loop !z (Node node') =
       Node $
       case node' of
