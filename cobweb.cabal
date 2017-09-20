@@ -48,6 +48,23 @@ library
                      , primitive
   default-language:    Haskell2010
 
+test-suite tasty
+  hs-source-dirs:       test
+  ghc-options:          -Wall
+                        -Wincomplete-uni-patterns
+                        -Wincomplete-record-updates
+                        -Wmissing-import-lists
+                        -Widentities
+                        -O2
+  type:                 exitcode-stdio-1.0
+  main-is:              Main.hs
+  build-depends:        base >= 4.7 && < 5
+                      , cobweb
+                      , tasty
+                      , tasty-quickcheck
+                      , QuickCheck
+  default-language:     Haskell2010
+
 source-repository head
   type:     git
   location: https://github.com/githubuser/cobweb

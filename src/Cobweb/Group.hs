@@ -39,6 +39,7 @@ module Cobweb.Group
 
 import Control.Monad.Trans (lift)
 import Data.Type.Sum.Lifted (FSum(FInL))
+import GHC.Stack (HasCallStack)
 
 import qualified Cobweb.Consumer as C
 import Cobweb.Core (Leaf, Producer, forsOn, i0, yieldOn)
@@ -54,8 +55,14 @@ import Cobweb.Type.Combinators (fsumOnly)
 -- chunk contains all effects /preceding/ its connections (except for
 -- the first one), which typically makes sense for 'Producer's, which
 -- run all connection-associated actions before the actual connection.
-chunkBy :: (Functor c, Functor m) => Int -> Leaf c m r -> Leaf (Leaf c m) m r
-chunkBy n = loop
+chunkBy ::
+     (HasCallStack, Functor c, Functor m)
+  => Int
+  -> Leaf c m r
+  -> Leaf (Leaf c m) m r
+chunkBy n
+  | n <= 0 = error "Chunk length should be positive"
+  | otherwise = loop
   where
     loop node =
       Node $
@@ -73,8 +80,13 @@ chunkBy n = loop
 -- 'Cobweb.Core.Consumer's, which run all connection-associated
 -- actions after the actual connection.
 chunkConsumerBy ::
-     (Functor c, Functor m) => Int -> Leaf c m r -> Leaf (Leaf c m) m r
-chunkConsumerBy n = loop
+     (HasCallStack, Functor c, Functor m)
+  => Int
+  -> Leaf c m r
+  -> Leaf (Leaf c m) m r
+chunkConsumerBy n
+  | n <= 0 = error "Chunk length should be positive"
+  | otherwise = loop
   where
     loop node =
       Node $
