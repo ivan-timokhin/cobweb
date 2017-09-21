@@ -224,11 +224,13 @@ i10 ::
      IIndex N10 (a0 : a1 : a2 : a3 : a4 : a5 : a6 : a7 : a8 : a9 : a10 : as) a10
 i10 = IIS i9
 
+-- | Remove an element from a type-level list.
 type family Remove (n :: N) (as :: [k]) where
   Remove n '[] = '[]
   Remove 'Z (a : as) = as
   Remove ('S n) (a : as) = a : Remove n as
 
+-- | Replace an element in a type-level list.
 type family Replace (n :: N) (as :: [k]) (a :: k) where
   Replace n '[] a = '[]
   Replace 'Z (a : as) b = b : as
