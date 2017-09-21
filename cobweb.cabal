@@ -38,6 +38,7 @@ library
                      , Cobweb.Duplex
                      , Cobweb.Resource
                      , Cobweb.List
+                     , Cobweb.Tutorial
   build-depends:       base >= 4.7 && < 5
                      , mtl
                      , mmorph
