@@ -20,6 +20,7 @@ library
                        -Wincomplete-record-updates
                        -Wmissing-import-lists
                        -Widentities
+                       -O2
   exposed-modules:     Cobweb
                      , Cobweb.Type.Combinators
                      , Cobweb.Type.Lemmata
