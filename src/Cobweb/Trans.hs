@@ -8,6 +8,7 @@ Stability: experimental
 
 -}
 {-# OPTIONS_HADDOCK show-extensions #-}
+{-# LANGUAGE BangPatterns #-}
 module Cobweb.Trans
   ( distribute
     -- * State
@@ -23,6 +24,13 @@ module Cobweb.Trans
   , runReaderN
     -- * Except
   , runExceptN
+    -- * Writer
+    -- ** Strict
+  , runWriterN
+  , execWriterN
+    -- ** Lazy
+  , runLazyWriterN
+  , execLazyWriterN
   ) where
 
 import Control.Monad.Morph (MFunctor(hoist))
@@ -31,9 +39,13 @@ import qualified Control.Monad.State.Lazy as SL
 import qualified Control.Monad.State.Strict as SS
 import qualified Control.Monad.Reader as R
 import qualified Control.Monad.Except as E
+import qualified Control.Monad.Writer.Strict as WS
+import qualified Control.Monad.Writer.Lazy as WL
 
 import Cobweb.Core (Node, connects, forsAll, run)
-import Cobweb.Internal (unsafeHoist)
+import Cobweb.Internal
+       (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF),
+        unsafeHoist)
 import Cobweb.Type.Combinators (All)
 
 -- | Move a single transformer layer from ‘beneath’ the 'Node' to
@@ -112,3 +124,52 @@ runExceptN ::
   => Node cs (E.ExceptT e m) a
   -> Node cs m (Either e a)
 runExceptN = E.runExceptT . distribute
+
+-- | Run 'WS.WriterT', returning both the value and the output.
+runWriterN ::
+     (Monoid w, Monad m, All Functor cs)
+  => Node cs (WS.WriterT w m) a
+  -> Node cs m (a, w)
+runWriterN = loop mempty
+  where
+    loop !w node =
+      Node $
+      case getNode node of
+        ReturnF a -> ReturnF (a, w)
+        ConnectF con -> ConnectF (fmap (loop w) con)
+        EffectF eff ->
+          EffectF $ do
+            (eff', !w') <- WS.runWriterT eff
+            let !w'' = w `mappend` w'
+            pure $ loop w'' eff'
+
+-- | Run 'WS.WriterT', returning only the output.
+execWriterN ::
+     (Monoid w, Monad m, All Functor cs)
+  => Node cs (WS.WriterT w m) a
+  -> Node cs m w
+execWriterN = fmap snd . runWriterN
+
+-- | Run 'WL.WriterT', returning both the value and the output.
+runLazyWriterN ::
+     (Monoid w, Monad m, All Functor cs)
+  => Node cs (WL.WriterT w m) a
+  -> Node cs m (a, w)
+runLazyWriterN = loop mempty
+  where
+    loop w node =
+      Node $
+      case getNode node of
+        ReturnF a -> ReturnF (a, w)
+        ConnectF con -> ConnectF (fmap (loop w) con)
+        EffectF eff ->
+          EffectF $ do
+            (eff', w') <- WL.runWriterT eff
+            pure $ loop (w `mappend` w') eff'
+
+-- | Run 'WL.WriterT', returning both the value and the output.
+execLazyWriterN ::
+     (Monoid w, Monad m, All Functor cs)
+  => Node cs (WL.WriterT w m) a
+  -> Node cs m w
+execLazyWriterN = fmap snd . runLazyWriterN
