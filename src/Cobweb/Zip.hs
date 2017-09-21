@@ -40,7 +40,6 @@ import Control.Applicative (liftA2)
 import Control.Monad (forever)
 import Data.Proxy (Proxy(Proxy))
 import Data.Type.Length (Length)
-import Data.Type.Sum.Lifted (FSum(FInL, FInR))
 import Type.Class.Known (Known)
 import Type.Family.List (type (++))
 
@@ -48,7 +47,8 @@ import Cobweb.Core (Awaiting, Yielding, awaitOn, yieldOn)
 import Cobweb.Internal
        (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF))
 import Cobweb.Type.Combinators
-       (All, IIndex, Remove, fdecompIdx, finl, finr, i0, i1, i2, i3)
+       (All, FSum(FInL, FInR), IIndex, Remove, fdecompIdx, finl, finr, i0,
+        i1, i2, i3)
 
 -- $specialised
 --

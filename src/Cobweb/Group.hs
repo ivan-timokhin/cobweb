@@ -38,7 +38,6 @@ module Cobweb.Group
   ) where
 
 import Control.Monad.Trans (lift)
-import Data.Type.Sum.Lifted (FSum(FInL))
 import GHC.Stack (HasCallStack)
 
 import qualified Cobweb.Consumer as C
@@ -46,7 +45,7 @@ import Cobweb.Core (Leaf, Producer, forsOn, i0, yieldOn)
 import Cobweb.Internal
        (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF))
 import qualified Cobweb.Producer as P
-import Cobweb.Type.Combinators (fsumOnly)
+import Cobweb.Type.Combinators (FSum(FInL), fsumOnly)
 
 -- | Split a stream into substreams of the specified number of
 -- elements each (except, possibly, for the last one).

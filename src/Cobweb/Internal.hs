@@ -74,9 +74,8 @@ import Control.Monad.Trans.Resource (MonadResource(liftResourceT))
 import Control.Monad.Writer.Class
        (MonadWriter(listen, pass, tell, writer), censor)
 import Data.Bifunctor (Bifunctor(first, second))
-import Data.Type.Sum.Lifted (FSum)
 
-import Cobweb.Type.Combinators (All)
+import Cobweb.Type.Combinators (All, FSum)
 
 -- | The base functor of 'Node'.
 data NodeF (cs :: [* -> *]) (m :: * -> *) r a

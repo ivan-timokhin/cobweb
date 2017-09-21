@@ -46,13 +46,13 @@ module Cobweb.Fuse
 
 import Data.Bifunctor (first)
 import Data.Type.Equality ((:~:), type (==))
-import Data.Type.Sum.Lifted (FSum(FInL))
 import Type.Class.Known (Known)
 
 import Cobweb.Core (Awaiting, Leaf, Yielding, mapsAll)
 import Cobweb.Internal (Node)
 import Cobweb.Type.Combinators
-       (All, IIndex, Remove, Replace, fuseSum, fuseSumAll, fuseSumWith)
+       (All, FSum(FInL), IIndex, Remove, Replace, fuseSum, fuseSumAll,
+        fuseSumWith)
 
 -- | Given (different) indices of two identical channels of a 'Node',
 -- fuse them together at the location of the /second/ index, dropping

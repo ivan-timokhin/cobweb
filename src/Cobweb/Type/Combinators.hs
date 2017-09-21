@@ -12,6 +12,7 @@ that are used in implementation and interface of the library.
 {-# OPTIONS_HADDOCK show-extensions #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE EmptyCase #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
@@ -24,8 +25,11 @@ that are used in implementation and interface of the library.
 
 module Cobweb.Type.Combinators
   (
+    -- * Functor sum
+    FSum(FInL, FInR)
+  , absurdFSum
     -- * Indices
-    IIndex(IIZ, IIS)
+  , IIndex(IIZ, IIS)
   , forgetIdx
   , lastIndex
     -- ** Small indices
@@ -65,13 +69,80 @@ import Data.Bifunctor (first)
 import Data.Type.Equality ((:~:), type (==))
 import Data.Type.Index (Index(IS, IZ))
 import Data.Type.Length (Length(LS, LZ))
-import Data.Type.Sum.Lifted (FSum(FInL, FInR), injectFSum, nilFSum)
-import Data.Void (absurd)
 import Type.Class.Known (Known(known))
 import Type.Class.Witness (Witness((\\)))
 import Type.Family.List (type (++), type (<$>), Last, ListC, Null)
 import Type.Family.Nat
        (Len, N(S, Z), N0, N1, N10, N2, N3, N4, N5, N6, N7, N8, N9, Pred)
+
+-- | A sum of a list of functors.
+data FSum (fs :: [k -> *]) (a :: k) where
+  -- | The sum is represented by the head of the list.
+  FInL :: !(f a) -> FSum (f : fs) a
+  -- | The sum is represented by the tail of the list.
+  FInR :: !(FSum fs a) -> FSum (f : fs) a
+
+-- | A sum of empty list is uninhabited, except for bottom.
+absurdFSum :: FSum '[] a -> b
+{-# INLINE absurdFSum #-}
+absurdFSum x = case x of {}
+
+instance All Functor fs => Functor (FSum fs) where
+  fmap = map_
+
+map_ :: All Functor fs => (a -> b) -> FSum fs a -> FSum fs b
+{-# INLINE[0] map_ #-}
+map_ f (FInL x) = FInL (fmap f x)
+map_ f (FInR x) = FInR (map_ f x)
+
+{-# RULES
+"fsum/fmap1" map_ = map1_
+"fsum/fmap2" map_ = map2_
+"fsum/fmap3" map_ = map3_
+"fsum/fmap4" map_ = map4_
+"fsum/fmap5" map_ = map5_
+ #-}
+
+map1_ :: Functor f => (a -> b) -> FSum '[ f] a -> FSum '[ f] b
+{-# INLINE map1_ #-}
+map1_ f (FInL x) = FInL (fmap f x)
+map1_ _ (FInR x) = absurdFSum x
+
+map2_ ::
+     (Functor f0, Functor f1)
+  => (a -> b)
+  -> FSum '[ f0, f1] a
+  -> FSum '[ f0, f1] b
+{-# INLINE map2_ #-}
+map2_ f (FInL x) = FInL (fmap f x)
+map2_ f (FInR x) = FInR (map1_ f x)
+
+map3_ ::
+     (Functor f0, Functor f1, Functor f2)
+  => (a -> b)
+  -> FSum '[ f0, f1, f2] a
+  -> FSum '[ f0, f1, f2] b
+{-# INLINE map3_ #-}
+map3_ f (FInL x) = FInL (fmap f x)
+map3_ f (FInR x) = FInR (map2_ f x)
+
+map4_ ::
+     (Functor f0, Functor f1, Functor f2, Functor f3)
+  => (a -> b)
+  -> FSum '[ f0, f1, f2, f3] a
+  -> FSum '[ f0, f1, f2, f3] b
+{-# INLINE map4_ #-}
+map4_ f (FInL x) = FInL (fmap f x)
+map4_ f (FInR x) = FInR (map3_ f x)
+
+map5_ ::
+     (Functor f0, Functor f1, Functor f2, Functor f3, Functor f4)
+  => (a -> b)
+  -> FSum '[ f0, f1, f2, f3, f4] a
+  -> FSum '[ f0, f1, f2, f3, f4] b
+{-# INLINE map5_ #-}
+map5_ f (FInL x) = FInL (fmap f x)
+map5_ f (FInR x) = FInR (map4_ f x)
 
 -- | A value of type @'IIndex' n as a@ is a witness of a fact that the
 -- list @as@ contains element @a@ at position @n@; see 'i0' and others
@@ -171,7 +242,7 @@ replaceIdx (IIS n) = IIS (replaceIdx n)
 -- | Extract the only term of a single-term sum.
 fsumOnly :: FSum '[f] a -> f a
 fsumOnly (FInL f) = f
-fsumOnly (FInR f) = absurd . nilFSum $ f
+fsumOnly (FInR f) = absurdFSum f
 
 -- | Decompose the sum into either an element at the specific index,
 -- or some element from the rest of the sum.

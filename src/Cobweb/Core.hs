@@ -79,8 +79,6 @@ import Data.Bifunctor (second, first)
 import Data.Foldable (traverse_)
 import Data.Proxy (Proxy(Proxy))
 import Data.Type.Length (Length)
-import Data.Type.Sum.Lifted (FSum, nilFSum)
-import Data.Void (absurd)
 import Type.Class.Known (Known)
 import Type.Class.Witness (Witness((\\)))
 import Type.Family.List (type (++))
@@ -89,9 +87,9 @@ import Cobweb.Internal
        (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF), cata,
         inspect, transform, transformCons, unfold)
 import Cobweb.Type.Combinators
-       (All, IIndex, Remove, Replace, fdecompIdx, fdecompReplaceIdx,
-        finjectIdx, finl, finr, freplaceIdx, fsumOnly, i0, i1, i10, i2, i3,
-        i4, i5, i6, i7, i8, i9, replaceIdx)
+       (All, FSum, IIndex, Remove, Replace, absurdFSum, fdecompIdx,
+        fdecompReplaceIdx, finjectIdx, finl, finr, freplaceIdx, fsumOnly,
+        i0, i1, i10, i2, i3, i4, i5, i6, i7, i8, i9, replaceIdx)
 import Cobweb.Type.Lemmata (ireplacedRetainsAll, appendAll, iwithoutRetainsAll)
 
 -- | A node with no channels, isomorphic to an effect in the base monad.
@@ -135,7 +133,7 @@ run = cata alg
   where
     alg (ReturnF r) = pure r
     alg (EffectF eff) = join eff
-    alg (ConnectF con) = absurd (nilFSum con)
+    alg (ConnectF con) = absurdFSum con
 
 -- | 'inspect' a 'Leaf'.
 inspectLeaf ::

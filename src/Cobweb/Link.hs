@@ -50,7 +50,6 @@ import Data.Functor.Compose (Compose(getCompose))
 import Data.Functor.Identity (Identity(Identity, runIdentity))
 import Data.Proxy (Proxy(Proxy))
 import Data.Type.Length (Length)
-import Data.Type.Sum.Lifted (FSum)
 import Type.Class.Known (Known)
 import Type.Class.Witness (Witness((\\)))
 import Type.Family.List (type (++), Last, Null)
@@ -61,7 +60,7 @@ import Data.Functor.Product (Product(Pair))
 import Cobweb.Internal
        (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF))
 import Cobweb.Type.Combinators
-       (Remove, All, IIndex, fdecompIdx, finl, finr, i0, lastIndex)
+       (All, FSum, IIndex, Remove, fdecompIdx, finl, finr, i0, lastIndex)
 import Cobweb.Type.Lemmata (iwithoutRetainsLength)
 
 -- The functional dependency on Annihilate is very annoying, but in
