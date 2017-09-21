@@ -67,10 +67,12 @@ foldNode ::
   -> Producer a m r -- ^ Source of values; essentially an effectful
                     -- list.
   -> m (b, r)
+{-# INLINE foldNode #-}
 foldNode comb seed fin = run . foldOn i0 comb seed fin
 
 -- | Same as 'foldNode', but discard 'Producer' return value.
 foldNode_ :: Monad m => (x -> a -> x) -> x -> (x -> b) -> Producer a m r -> m b
+{-# INLINE foldNode_ #-}
 foldNode_ comb seed fin = fmap fst . foldNode comb seed fin
 
 -- | Fold over values from a 'Producer', possibly with effects in the
@@ -104,6 +106,7 @@ foldOn ::
   -> (x -> b) -- ^ Finalise accumulator.
   -> Node cs m r
   -> Node (Remove n cs) m (b, r)
+{-# INLINE foldOn #-}
 foldOn n comb seed fin = loop seed
   where
     loop !z (Node node) =

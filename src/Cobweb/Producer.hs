@@ -76,6 +76,7 @@ yield = yieldOn lastIndex
 
 -- | Yield each value in order.
 each :: (Foldable f, Functor m) => f a -> Producer a m ()
+{-# INLINE each #-}
 each = eachOn i0
 
 -- | Generate an infinite stream of values by repeatedly running the

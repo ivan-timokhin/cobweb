@@ -130,6 +130,7 @@ type Consumer a = Leaf (Awaiting a)
 
 -- | Run a node with no open channels in the base monad.
 run :: Monad m => Effect m r -> m r
+{-# INLINE run #-}
 run = cata alg
   where
     alg (ReturnF r) = pure r
@@ -168,6 +169,7 @@ connects con = Node $ ConnectF $ fmap (Node . ReturnF) con
 -- 'connectsOn' 'i3' :: (a, r) -> 'Node' '[f0, f1, f2, 'Yielding' a, f4] m r
 -- @
 connectsOn :: Functor c => IIndex n cs c -> c r -> Node cs m r
+{-# INLINE connectsOn #-}
 connectsOn n con = Node $ ConnectF $ finjectIdx n $ fmap (Node . ReturnF) con
 
 -- | Provide a value on a channel specified by an index.
@@ -179,6 +181,7 @@ connectsOn n con = Node $ ConnectF $ finjectIdx n $ fmap (Node . ReturnF) con
 -- 'yieldOn' 'i2' :: a -> 'Node' (c0 : c1 : 'Yielding' a : cs) m ()
 -- @
 yieldOn :: IIndex n cs (Yielding a) -> a -> Node cs m ()
+{-# INLINE yieldOn #-}
 yieldOn n a = connectsOn n (a, ())
 
 -- | Yield all elements of a container on a specified channel.
@@ -189,6 +192,7 @@ eachOn ::
   => IIndex n cs (Yielding a)
   -> f a
   -> Node cs m ()
+{-# INLINE eachOn #-}
 eachOn n = traverse_ (yieldOn n)
 
 -- | Receive a value on a channel specified by an index.

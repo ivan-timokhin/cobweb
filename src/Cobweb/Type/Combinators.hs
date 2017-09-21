@@ -265,18 +265,28 @@ freplaceIdx (IIS n) f (FInR x) = FInR (freplaceIdx n f x)
 -- @
 --
 -- And so on.
---
--- Since the value of the index @n@ is not used at type level, this is just
---
--- @
--- 'finjectIdx' = 'injectFSum' . 'forgetIdx'
--- @
 finjectIdx ::
+  forall n fs f a.
      IIndex n fs f -- ^ An index at which to inject the functor.
   -> f a -- ^ The value to be injected.
   -> FSum fs a -- ^ A sum represented by the provided value at the
      -- provided index.
-finjectIdx = injectFSum . forgetIdx
+{-# INLINE[0] finjectIdx #-}
+finjectIdx n f = loop n
+  where
+    loop :: IIndex n' fs' f -> FSum fs' a
+    loop IIZ = FInL f
+    loop (IIS n') = FInR (loop n')
+
+{-# RULES
+"finjectIdx/IIZ" forall f (n :: IIndex N0 (f : fs) f) .
+                 finjectIdx n f = FInL f
+"finjectIdx/IIS" forall f n. finjectIdx n f = finjectIdxSucc n f
+ #-}
+
+finjectIdxSucc :: IIndex ('S n) (g : fs) f -> f a -> FSum (g : fs) a
+{-# INLINE finjectIdxSucc #-}
+finjectIdxSucc (IIS n) f = FInR (finjectIdx n f)
 
 -- | Embed a sum into a sum of a larger list, obtained by adding
 -- elements on the right.

@@ -114,6 +114,7 @@ newtype Node cs m r = Node
 
 -- | Fold a 'Node'
 cata :: (All Functor cs, Functor m) => (NodeF cs m r a -> a) -> Node cs m r -> a
+{-# INLINE cata #-}
 cata alg = c
   where
     c = alg . fmap c . getNode
@@ -125,6 +126,7 @@ transform ::
   => (NodeF cs m r (Node cs' m' r') -> NodeF cs' m' r' (Node cs' m' r'))
   -> Node cs m r
   -> Node cs' m' r'
+{-# INLINE transform #-}
 transform alg = cata (Node . alg)
 
 instance (All Functor cs, Functor m) => Functor (Node cs m) where
@@ -133,6 +135,7 @@ instance (All Functor cs, Functor m) => Functor (Node cs m) where
 instance (All Functor cs, Functor m) => Applicative (Node cs m) where
   pure = Node . ReturnF
   (<*>) = ap
+  (*>) = (>>)
 
 instance (All Functor cs, Functor m) => Monad (Node cs m) where
   x >>= f = transform alg x
