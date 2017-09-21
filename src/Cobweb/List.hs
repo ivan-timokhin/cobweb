@@ -48,6 +48,7 @@ import Control.Monad.Reader.Class (MonadReader(ask, local, reader))
 import Control.Monad.State.Class (MonadState(get, put, state))
 import Control.Monad.Trans (MonadTrans(lift))
 import Control.Monad.Trans.Resource (MonadResource(liftResourceT))
+import Data.Semigroup (Semigroup((<>)))
 
 import Cobweb.Core (i0, mapOn)
 import Cobweb.Internal
@@ -70,9 +71,12 @@ instance Monad m => Applicative (ListT m) where
 instance Monad m => Monad (ListT m) where
   x >>= f = ListT $ for (runListT x) (runListT . f)
 
+instance Monad m => Semigroup (ListT m a) where
+  x <> y = ListT $ runListT x >> runListT y
+
 instance Monad m => Monoid (ListT m a) where
   mempty = ListT (pure ())
-  x `mappend` y = ListT $ runListT x >> runListT y
+  mappend = (<>)
 
 instance Monad m => Alternative (ListT m) where
   empty = mempty
