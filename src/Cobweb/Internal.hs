@@ -35,6 +35,7 @@ simply trying to pass around some values through communication
 channels, with no effects from the base monad required.
 -}
 {-# OPTIONS_HADDOCK show-extensions #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -66,9 +67,12 @@ import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad.Morph (MFunctor(hoist), MMonad(embed))
 import Control.Monad.Primitive (PrimMonad(PrimState, primitive))
 import Control.Monad.Reader.Class (MonadReader(ask, local, reader))
+import Control.Monad.RWS.Class (MonadRWS)
 import Control.Monad.State.Class (MonadState(get, put, state))
 import Control.Monad.Trans (MonadTrans(lift))
 import Control.Monad.Trans.Resource (MonadResource(liftResourceT))
+import Control.Monad.Writer.Class
+       (MonadWriter(listen, pass, tell, writer), censor)
 import Data.Bifunctor (Bifunctor(first, second))
 import Data.Type.Sum.Lifted (FSum)
 
@@ -174,21 +178,43 @@ instance (All Functor cs, MonadReader r m) => MonadReader r (Node cs m) where
   -- classes. *grumble*
   local f = unsafeHoist (local f)
 
--- MonadWrite is absent primarily because of listen; the problem is
--- that, since we have an entire list of monadic actions, it is
--- necessary to listen on each individually, and then manually combine
--- the results.  That wouldn't be too bad, but there are two ways to
--- do that—strict and lazy—and while the usual preference is to be as
--- strict as possible, I just know there's someone out there who
--- relies on this laziness for some clever recursive-knot-tying, and
--- whose code will be irreparably broken by introducing strict operations.
---
--- The moral of the story is that if it is impossible to do correctly,
--- I'd rather not do it at all.
+-- | Both 'listen' and 'pass' accumulate intermediate results
+-- strictly.
+instance (All Functor cs, MonadWriter w m) => MonadWriter w (Node cs m) where
+  writer = lift . writer
+  tell = lift . tell
+  listen = loop mempty
+    where
+      loop !m node =
+        Node $
+        case getNode node of
+          ReturnF r -> ReturnF (r, m)
+          ConnectF con -> ConnectF (fmap (loop m) con)
+          EffectF eff ->
+            EffectF $ do
+              (x, w) <- listen eff
+              pure (loop (m `mappend` w) x)
+  pass = loop mempty
+    where
+      loop !m node =
+        Node $
+        case getNode node of
+          ReturnF (r, f) ->
+            EffectF $ do
+              tell (f m)
+              pure (pure r)
+          ConnectF con -> ConnectF (fmap (loop m) con)
+          EffectF eff ->
+            EffectF $ do
+              (x, w) <- censor (const mempty) (listen eff)
+              pure (loop (m `mappend` w) x)
+
 instance (All Functor cs, MonadState s m) => MonadState s (Node cs m) where
   get = lift get
   put = lift . put
   state = lift . state
+
+instance (All Functor cs, MonadRWS r w s m) => MonadRWS r w s (Node cs m)
 
 instance (All Functor cs, MonadBase b m) => MonadBase b (Node cs m) where
   liftBase = lift . liftBase
