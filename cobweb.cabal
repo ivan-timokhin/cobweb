@@ -83,6 +83,8 @@ benchmark criterion
                        -ddump-rule-rewrites
   type:                exitcode-stdio-1.0
   main-is:             Bench.hs
+  other-modules:       Bench.Sum
+                     , Bench.SumMap
   build-depends:       base >= 4.7 && < 5
                      , cobweb
                      , criterion
