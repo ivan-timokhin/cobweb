@@ -17,9 +17,6 @@ import Data.Functor.Identity (Identity(Identity, runIdentity))
 runCobwebPure :: W.Effect Identity c -> c
 runCobwebPure = runIdentity . W.run
 
-value :: Int
-value = 1000000
-
 main :: IO ()
 main =
   defaultMain
@@ -32,6 +29,9 @@ main =
         , bench "streaming" $ whnf sumS value
         ]
     ]
+  where
+    value :: Int
+    value = 1000000
 
 sumW :: Int -> Int
 {-# NOINLINE sumW #-}
