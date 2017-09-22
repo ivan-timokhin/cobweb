@@ -137,11 +137,27 @@ instance (All Functor cs, Functor m) => Applicative (Node cs m) where
   (*>) = (>>)
 
 instance (All Functor cs, Functor m) => Monad (Node cs m) where
-  x >>= f = transform alg x
-    where
-      alg (ReturnF r) = getNode (f r)
-      alg (EffectF eff) = EffectF eff
-      alg (ConnectF con) = ConnectF con
+  (Node x) >>= f = bind_ f x
+
+bind_ ::
+     (All Functor cs, Functor m)
+  => (a -> Node cs m b)
+  -> NodeF cs m a (Node cs m a)
+  -> Node cs m b
+{-# INLINE[0] bind_ #-}
+bind_ f x = transform alg (Node x)
+  where
+    alg (ReturnF a) = getNode (f a)
+    alg (EffectF eff) = EffectF eff
+    alg (ConnectF con) = ConnectF con
+
+{-# RULES
+"cobweb/bind_/return" forall a f . bind_ f (ReturnF a) = f a
+"cobweb/bind_/connect" forall con f.
+  bind_ f (ConnectF con) = Node (ConnectF (fmap (bind_ f . getNode) con))
+"cobweb/bind_/effect" forall eff f.
+  bind_ f (EffectF eff) = Node (EffectF (fmap (bind_ f . getNode) eff))
+ #-}
 
 instance MonadTrans (Node cs) where
   lift eff = Node $ EffectF $ fmap (Node . ReturnF) eff
