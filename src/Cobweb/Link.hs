@@ -201,6 +201,7 @@ instance (Annihilate f1 g1, Annihilate f2 g2) =>
   => Node lcs m a -- ^ ‘Upstream’ node.
   -> Node (r : rcs') m a -- ^ ‘Downstream’ node.
   -> Node (Remove (Pred (Len lcs)) lcs ++ rcs') m a
+{-# INLINE (>->) #-}
 (>->) = linkPipe_ \\ iwithoutRetainsLength idx
   where
     idx :: IIndex (Pred (Len lcs)) lcs (Last lcs)
@@ -220,6 +221,7 @@ linkPipe_ ::
   => Node lcs m a
   -> Node (r : rcs') m a
   -> Node (Remove (Pred (Len lcs)) lcs ++ rcs') m a
+{-# INLINE linkPipe_ #-}
 linkPipe_ = linkOn lastIndex i0
 
 -- | A depth-first traversal of a communication tree, starting from a
@@ -265,6 +267,7 @@ linkPipe_ = linkOn lastIndex i0
   => Node (l : lcs) m a -- ^ ‘Producer’.
   -> Node (r : rcs) m a -- ^ Attached node.
   -> Node (rcs ++ lcs) m a
+{-# INLINE (|->) #-}
 (|->) = linkOn' i0 i0
 
 infixl 7 |->
@@ -309,6 +312,7 @@ infixl 7 |->
   => Node lcs m a -- ^ Attached node.
   -> Node rcs m a -- ^ ‘Consumer’.
   -> Node (Remove (Pred (Len rcs)) rcs ++ Remove (Pred (Len lcs)) lcs) m a
+{-# INLINE (>-|) #-}
 (>-|) =
   linkConsumer_ \\ iwithoutRetainsLength lidx \\ iwithoutRetainsLength ridx
   where
@@ -334,6 +338,7 @@ linkConsumer_ ::
   => Node lcs m a
   -> Node rcs m a
   -> Node (Remove (Pred (Len rcs)) rcs ++ Remove (Pred (Len lcs)) lcs) m a
+{-# INLINE linkConsumer_ #-}
 linkConsumer_ = linkOn' lastIndex lastIndex
 
 -- | Link nodes on a specified pair of channels, putting first node's
@@ -358,6 +363,7 @@ linkOn ::
   -> Node lcs m r
   -> Node rcs m r
   -> Node (Remove n lcs ++ Remove k rcs) m r
+{-# INLINE linkOn #-}
 linkOn n k =
   genericLinkOn (fmap Identity) Identity (finl proxyR) (finr proxyL) n k .
   Identity
@@ -388,6 +394,7 @@ linkOn' ::
   -> Node lcs m r
   -> Node rcs m r
   -> Node (Remove k rcs ++ Remove n lcs) m r
+{-# INLINE linkOn' #-}
 linkOn' n k =
   genericLinkOn (fmap Identity) Identity (finr proxyR) (finl proxyL) n k .
   Identity
@@ -452,6 +459,7 @@ linkOn' n k =
   -> Node (Compose rresp rreq : rcs') m a -- ^ Downstream ‘client’
                                           -- node.
   -> Node (Remove (Pred (Len lcs)) lcs ++ rcs') m a
+{-# INLINE (+>>) #-}
 (+>>) = linkDuplexPullPipe_ \\ iwithoutRetainsLength lidx
   where
     lidx :: IIndex (Pred (Len lcs)) lcs (Last lcs)
@@ -493,6 +501,7 @@ infixr 5 +>>
   -> rreq' (Node (Compose rresp rreq : rcs') m a) -- ^ Downstream
      -- ‘client’ node.
   -> rreq' (Node (Remove (Pred (Len lcs)) lcs ++ rcs') m a)
+{-# INLINE (>+>) #-}
 (>+>) left = fmap (left +>>)
 
 infixl 6 >+>
@@ -511,6 +520,7 @@ linkDuplexPullPipe_ ::
   => lreq (Node lcs m r)
   -> Node (Compose rresp rreq : rcs') m r
   -> Node (Remove (Pred (Len lcs)) lcs ++ rcs') m r
+{-# INLINE linkDuplexPullPipe_ #-}
 linkDuplexPullPipe_ = linkOnDuplex lastIndex i0
 
 -- | Push-based linking of two 'Node's.
@@ -559,6 +569,7 @@ linkDuplexPullPipe_ = linkOnDuplex lastIndex i0
   -> rreq (Node (Compose rresp rreq : rcs') m a) -- ^ Downstream
      -- ‘server’ node.
   -> Node (Remove (Pred (Len lcs)) lcs ++ rcs') m a
+{-# INLINE (>>~) #-}
 (>>~) = linkDuplexPushPipe_ \\ iwithoutRetainsLength lidx
   where
     lidx :: IIndex (Pred (Len lcs)) lcs (Last lcs)
@@ -600,6 +611,7 @@ infixl 5 >>~
   -> rreq (Node (Compose rresp rreq : rcs') m a) -- ^ Downstream
      -- ‘server’ node.
   -> lreq' (Node (Remove (Pred (Len lcs)) lcs ++ rcs') m a)
+{-# INLINE (>~>) #-}
 left >~> right = fmap (>>~ right) left
 
 infixl 6 >~>
@@ -618,6 +630,7 @@ linkDuplexPushPipe_ ::
   => Node lcs m r
   -> rreq (Node (Compose rresp rreq : rcs') m r)
   -> Node (Remove (Pred (Len lcs)) lcs ++ rcs') m r
+{-# INLINE linkDuplexPushPipe_ #-}
 linkDuplexPushPipe_ = flip (linkOnDuplex' i0 lastIndex)
 
 -- | @('|>~')@ is to @('>>~')@ what @('|->')@ is to @('>->')@.
@@ -632,6 +645,7 @@ linkDuplexPushPipe_ = flip (linkOnDuplex' i0 lastIndex)
   => Node (Compose lresp lreq : lcs) m r -- ^ A ‘client’ node.
   -> rreq (Node (Compose rresp rreq : rcs) m r) -- ^ A ‘server’ node.
   -> Node (rcs ++ lcs) m r
+{-# INLINE (|>~) #-}
 (|>~) = flip (linkOnDuplex i0 i0)
 
 infixl 4 |>~
@@ -654,6 +668,7 @@ infixl 4 |>~
   => lreq (Node lcs m a) -- ^ A ‘server’ node.
   -> Node rcs m a -- ^ A ‘client’ node.
   -> Node (Remove (Pred (Len rcs)) rcs ++ Remove (Pred (Len lcs)) lcs) m a
+{-# INLINE (+>|) #-}
 (+>|) = linkConsumerDuplex_ \\ iwithoutRetainsLength ridx
   where
     ridx :: IIndex (Pred (Len rcs)) rcs (Last rcs)
@@ -678,6 +693,7 @@ linkConsumerDuplex_ ::
   => lreq (Node lcs m a)
   -> Node rcs m a
   -> Node (Remove (Pred (Len rcs)) rcs ++ Remove (Pred (Len lcs)) lcs) m a
+{-# INLINE linkConsumerDuplex_ #-}
 linkConsumerDuplex_ = linkOnDuplex' lastIndex lastIndex
 
 -- | Link nodes on a specified pair of duplex channels, putting first
@@ -698,6 +714,7 @@ linkOnDuplex ::
   -> lreq (Node lcs m r) -- ^ ‘Server’ node.
   -> Node rcs m r -- ^ ‘Client’ node.
   -> Node (Remove n lcs ++ Remove k rcs) m r
+{-# INLINE linkOnDuplex #-}
 linkOnDuplex = genericLinkOn getCompose getCompose (finl proxyR) (finr proxyL)
   where
     proxyR :: Proxy (Remove k rcs)
@@ -723,6 +740,7 @@ linkOnDuplex' ::
   -> lreq (Node lcs m r) -- ^ ‘Server’ node.
   -> Node rcs m r -- ^ ‘Client’ node.
   -> Node (Remove k rcs ++ Remove n lcs) m r
+{-# INLINE linkOnDuplex' #-}
 linkOnDuplex' = genericLinkOn getCompose getCompose (finr proxyR) (finl proxyL)
   where
     proxyR :: Proxy (Remove k rcs)
@@ -755,6 +773,7 @@ genericLinkOn ::
   -> lreq (Node lcs m r)
   -> Node rcs m r
   -> Node rescs m r
+{-# INLINE genericLinkOn #-}
 genericLinkOn ldecompose rdecompose lembed rembed n k = loop
   where
     loop left right =
