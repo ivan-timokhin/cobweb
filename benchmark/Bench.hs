@@ -21,6 +21,13 @@ main :: IO ()
 main =
   defaultMain
     [ bgroup
+      -- This benchmark in /incredibly/ fishy.  Brief inspection of
+      -- Core and/or list of fired rewrite rules shows that
+      -- build/foldr fusion happens in 'sumW' and NOWHERE ELSE.  This
+      -- is especially mysterious in case of @machines@, where the
+      -- generated list literally lives and dies within the library,
+      -- and yet makes it into the Core.  This creeps me out, but I
+      -- have no idea of how to fix that.
         "sum"
         [ bench "cobweb" $ whnf sumW value
         , bench "conduit" $ whnf sumC value
