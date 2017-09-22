@@ -157,6 +157,7 @@ foldOn_ ::
   -> (x -> b)
   -> Node cs m r
   -> Node (Remove n cs) m b
+{-# INLINE foldOn_ #-}
 foldOn_ n comb seed fin = fmap fst . foldOn n comb seed fin
 
 -- | Same as 'foldOn', but with effects in the base monad.
@@ -171,7 +172,8 @@ foldMOn ::
   -> (x -> m b)
   -> Node cs m r
   -> Node (Remove n cs) m (b, r)
-foldMOn n comb seed fin node' = Node (EffectF (fmap (flip loop node') seed))
+{-# INLINE foldMOn #-}
+foldMOn n comb seed fin = \node' -> Node (EffectF (fmap (flip loop node') seed))
   where
     loop !z (Node node) =
       Node $
@@ -192,6 +194,7 @@ foldMOn_ ::
   -> (x -> m b)
   -> Node cs m r
   -> Node (Remove n cs) m b
+{-# INLINE foldMOn_ #-}
 foldMOn_ n comb seed fin = fmap fst . foldMOn n comb seed fin
 
 -- | Strict left scan of a 'Node' on one of the channels
@@ -239,6 +242,7 @@ scanOn ::
      -- produce yielded value).
   -> Node cs m r
   -> Node (Replace n cs (Yielding b)) m r
+{-# INLINE scanOn #-}
 scanOn n comb seed fin = (yieldOn n' (fin seed) >>) . loop seed
   where
     n' = replaceIdx n
@@ -297,11 +301,13 @@ scanOnM ::
                 -- result).
   -> Node cs m r
   -> Node (Replace n cs (Yielding b)) m r
-scanOnM n comb seed fin node = do
-  !seed' <- lift seed
-  b <- lift $ fin seed'
-  yieldOn n' b
-  loop seed' node
+{-# INLINE scanOnM #-}
+scanOnM n comb seed fin =
+  \node -> do
+    !seed' <- lift seed
+    b <- lift $ fin seed'
+    yieldOn n' b
+    loop seed' node
   where
     n' = replaceIdx n
     loop !z (Node node') =
