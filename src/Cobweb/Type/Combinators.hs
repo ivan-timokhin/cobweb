@@ -243,6 +243,7 @@ replaceIdx (IIS n) = IIS (replaceIdx n)
 
 -- | Extract the only term of a single-term sum.
 fsumOnly :: FSum '[f] a -> f a
+{-# INLINE fsumOnly #-}
 fsumOnly (FInL f) = f
 fsumOnly (FInR f) = absurdFSum f
 

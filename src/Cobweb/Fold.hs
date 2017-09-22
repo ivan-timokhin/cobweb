@@ -49,12 +49,12 @@ module Cobweb.Fold
 import Control.Monad.Trans (lift)
 import Data.Proxy (Proxy(Proxy))
 
-import Cobweb.Core (Producer, Yielding, run, yieldOn)
+import Cobweb.Core (Producer, Yielding, yieldOn)
 import Cobweb.Internal
        (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF))
 import Cobweb.Type.Combinators
-       (All, IIndex, Remove, Replace, fdecompIdx, fdecompReplaceIdx, i0,
-        replaceIdx)
+       (All, IIndex, Remove, Replace, fdecompIdx, fdecompReplaceIdx,
+        fsumOnly, replaceIdx)
 
 -- | Fold over values from a 'Producer', and provide both the fold
 -- result and the 'Producer' return value.
@@ -68,7 +68,17 @@ foldNode ::
                     -- list.
   -> m (b, r)
 {-# INLINE foldNode #-}
-foldNode comb seed fin = run . foldOn i0 comb seed fin
+foldNode comb seed fin = loop seed
+  where
+    loop !z node =
+      case getNode node of
+        ReturnF r -> pure (fin z, r)
+        EffectF eff -> do
+          rest <- eff
+          loop z rest
+        ConnectF con ->
+          case fsumOnly con of
+            (a, rest) -> loop (z `comb` a) rest
 
 -- | Same as 'foldNode', but discard 'Producer' return value.
 foldNode_ :: Monad m => (x -> a -> x) -> x -> (x -> b) -> Producer a m r -> m b
@@ -88,11 +98,30 @@ foldMNode ::
   -> (x -> m b) -- ^ Finalise accumulator (e.g. 'pure').
   -> Producer a m r
   -> m (b, r)
-foldMNode comb seed fin = run . foldMOn i0 comb seed fin
+{-# INLINE foldMNode #-}
+foldMNode comb seed fin =
+  \node -> do
+    !z <- seed
+    loop z node
+  where
+    loop !z node =
+      case getNode node of
+        ReturnF r -> do
+          !b <- fin z
+          return (b, r)
+        EffectF eff -> do
+          rest <- eff
+          loop z rest
+        ConnectF con ->
+          case fsumOnly con of
+            (a, rest) -> do
+              !z' <- z `comb` a
+              loop z' rest
 
 -- | Same as 'foldMNode', but discard 'Producer' return value.
 foldMNode_ ::
      Monad m => (x -> a -> m x) -> m x -> (x -> m b) -> Producer a m r -> m b
+{-# INLINE foldMNode_ #-}
 foldMNode_ comb seed fin = fmap fst . foldMNode comb seed fin
 
 -- | Fold over values provided on one of the 'Node' channels, and add
