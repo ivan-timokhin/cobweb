@@ -18,7 +18,7 @@ runCobwebPure :: W.Effect Identity c -> c
 runCobwebPure = runIdentity . W.run
 
 value :: Int
-value = 10000
+value = 1000000
 
 main :: IO ()
 main =
