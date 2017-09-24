@@ -41,6 +41,7 @@ cat =
 
 -- | Apply a function to all values passing through.
 mapping :: Functor m => (a -> b) -> Pipe a b m r
+{-# INLINE mapping #-}
 mapping f =
   forever $ do
     a <- await

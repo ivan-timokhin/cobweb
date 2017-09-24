@@ -173,6 +173,7 @@ forgetIdx (IIS n) = IS (forgetIdx n)
 lastIndex ::
      forall as. (Known Length as, Null as ~ 'False)
   => IIndex (Pred (Len as)) as (Last as)
+{-# NOINLINE lastIndex #-}
 lastIndex = loop (known :: Length as)
   where
     loop ::
@@ -181,6 +182,19 @@ lastIndex = loop (known :: Length as)
       -> IIndex (Pred (Len as')) as' (Last as')
     loop (LS LZ) = IIZ
     loop (LS n@(LS _)) = IIS (loop n)
+
+{-# RULES
+"fsum/lastIndex/1" lastIndex = lastIndex1
+"fsum/lastIndex/2" lastIndex = lastIndex2
+ #-}
+
+lastIndex1 :: IIndex N0 '[a] a
+{-# INLINE lastIndex1 #-}
+lastIndex1 = IIZ
+
+lastIndex2 :: IIndex N1 '[a, b] b
+{-# INLINE lastIndex2 #-}
+lastIndex2 = IIS IIZ
 
 -- $small
 -- This section contains values of 'IIndex' for small values of @n@.
@@ -267,10 +281,34 @@ fdecompIdx ::
      IIndex n fs f -- ^ An index of an element to be extracted
   -> FSum fs a
   -> Either (FSum (Remove n fs) a) (f a)
+{-# NOINLINE fdecompIdx #-}
 fdecompIdx IIZ (FInL x) = Right x
 fdecompIdx IIZ (FInR x) = Left x
 fdecompIdx (IIS _) (FInL x) = Left (FInL x)
 fdecompIdx (IIS n) (FInR x) = first FInR (fdecompIdx n x)
+
+{-# RULES
+"fdecompIdx/1" fdecompIdx = decomp1
+"fdecompIdx/2" fdecompIdx = decomp2
+ #-}
+
+decomp1 ::
+     IIndex n '[ f0] f
+  -> FSum '[ f0] a
+  -> Either (FSum (Remove n '[ f0]) a) (f a)
+decomp1 IIZ (FInL x) = Right x
+decomp1 IIZ (FInR x) = absurdFSum x
+decomp1 (IIS n) _ = case n of {}
+
+decomp2 ::
+     IIndex n '[ f0, f1] f
+  -> FSum '[ f0, f1] a
+  -> Either (FSum (Remove n '[ f0, f1]) a) (f a)
+{-# INLINE decomp2 #-}
+decomp2 IIZ (FInL x) = Right x
+decomp2 IIZ (FInR x) = Left x
+decomp2 (IIS _) (FInL x) = Left (FInL x)
+decomp2 (IIS n) (FInR x) = first FInR (decomp1 n x)
 
 -- | Decompose the sum like 'fdecompIdx', but instead of the sum
 -- /without/ the requested element, return the sum with the requested
@@ -345,7 +383,7 @@ finjectIdx ::
   -> f a -- ^ The value to be injected.
   -> FSum fs a -- ^ A sum represented by the provided value at the
      -- provided index.
-{-# INLINE[0] finjectIdx #-}
+{-# NOINLINE finjectIdx #-}
 finjectIdx n f = loop n
   where
     loop :: IIndex n' fs' f -> FSum fs' a
@@ -353,14 +391,19 @@ finjectIdx n f = loop n
     loop (IIS n') = FInR (loop n')
 
 {-# RULES
-"finjectIdx/IIZ" forall f (n :: IIndex N0 (f : fs) f) .
-                 finjectIdx n f = FInL f
-"finjectIdx/IIS" forall f n. finjectIdx n f = finjectIdxSucc n f
+"finjectIdx/1" finjectIdx = inject1
+"finjectIdx/2" finjectIdx = inject2
  #-}
 
-finjectIdxSucc :: IIndex ('S n) (g : fs) f -> f a -> FSum (g : fs) a
-{-# INLINE finjectIdxSucc #-}
-finjectIdxSucc (IIS n) f = FInR (finjectIdx n f)
+inject1 :: IIndex n '[f0] f -> f a -> FSum '[f0] a
+{-# INLINE inject1 #-}
+inject1 IIZ = FInL
+inject1 (IIS n) = case n of {}
+
+inject2 :: IIndex n '[f0, f1] f -> f a -> FSum '[f0, f1] a
+{-# INLINE inject2 #-}
+inject2 IIZ = FInL
+inject2 (IIS n) = FInR . inject1 n
 
 -- | Embed a sum into a sum of a larger list, obtained by adding
 -- elements on the right.
@@ -371,8 +414,23 @@ finjectIdxSucc (IIS n) f = FInR (finjectIdx n f)
 -- Since the 'Type.Family.List.++' type family is not injective, a
 -- proxy argument is used to guide type inference.
 finl :: proxy gs -> FSum fs a -> FSum (fs ++ gs) a
+{-# NOINLINE finl #-}
 finl _ (FInL f) = FInL f
 finl proxy (FInR f) = FInR (finl proxy f)
+
+{-# RULES
+"finl/0" finl = finl0
+"finl/1" finl = finl1
+ #-}
+
+finl0 :: proxy gs -> FSum '[] a -> FSum gs a
+{-# INLINE finl0 #-}
+finl0 _ = absurdFSum
+
+finl1 :: proxy gs -> FSum '[f0] a -> FSum (f0 : gs) a
+{-# INLINE finl1 #-}
+finl1 _ (FInL x) = FInL x
+finl1 p (FInR x) = FInR (finl0 p x)
 
 -- | Embed a sum into a sum of a larger list, obtained by adding
 -- elements of the left.
@@ -385,11 +443,35 @@ finr ::
   => proxy fs
   -> FSum gs a
   -> FSum (fs ++ gs) a
+{-# NOINLINE finr #-}
 finr _ = loop (known :: Length fs)
   where
     loop :: Length fs' -> FSum gs a -> FSum (fs' ++ gs) a
     loop LZ = id
     loop (LS n) = FInR . loop n
+
+{-# RULES
+"finr/0" finr = finr0
+"finr/1" finr = finr1
+"finr/2" finr = finr2
+"finr/01" finr = finr01
+ #-}
+
+finr0 :: proxy '[] -> FSum fs a -> FSum fs a
+{-# INLINE finr0 #-}
+finr0 _ = id
+
+finr1 :: proxy '[ f0] -> FSum fs a -> FSum (f0 : fs) a
+{-# INLINE finr1 #-}
+finr1 _ = FInR
+
+finr2 :: proxy '[ f0, f1] -> FSum fs a -> FSum (f0 : f1 : fs) a
+{-# INLINE finr2 #-}
+finr2 _ = FInR . FInR
+
+finr01 :: proxy '[] -> FSum '[f] a -> FSum '[f] a
+{-# INLINE finr01 #-}
+finr01 _ = id
 
 -- | Unify two identical terms in the sum, discarding the first one.
 --
