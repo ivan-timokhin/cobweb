@@ -42,8 +42,7 @@ import GHC.Stack (HasCallStack)
 
 import qualified Cobweb.Consumer as C
 import Cobweb.Core (Leaf, Producer, forsOn, i0, yieldOn)
-import Cobweb.Internal
-       (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF))
+import Cobweb.Internal (Node(Connect, Effect, Return))
 import qualified Cobweb.Producer as P
 import Cobweb.Type.Combinators (FSum(FInL), fsumOnly)
 
@@ -63,12 +62,9 @@ chunkBy n
   | n <= 0 = error "Chunk length should be positive"
   | otherwise = loop
   where
-    loop node =
-      Node $
-      case getNode node of
-        ReturnF r -> ReturnF r
-        EffectF eff -> EffectF (fmap loop eff)
-        ConnectF _ -> ConnectF $ FInL $ fmap loop (P.splitAt n node)
+    loop (Return r) = Return r
+    loop (Effect eff) = Effect (fmap loop eff)
+    loop node@(Connect _) = Connect $ FInL $ fmap loop (P.splitAt n node)
 
 -- | Split a stream into substreams of specified number of connections
 -- each (except, possibly, for the last one).
@@ -87,12 +83,9 @@ chunkConsumerBy n
   | n <= 0 = error "Chunk length should be positive"
   | otherwise = loop
   where
-    loop node =
-      Node $
-      case getNode node of
-        ReturnF r -> ReturnF r
-        EffectF eff -> EffectF (fmap loop eff)
-        ConnectF _ -> ConnectF $ FInL $ fmap loop (C.splitAt n node)
+    loop (Return r) = Return r
+    loop (Effect eff) = Effect (fmap loop eff)
+    loop node@(Connect _) = Connect $ FInL $ fmap loop (C.splitAt n node)
 
 -- | Groups consecutive equal (as identified by the supplied
 -- predicate) elements of the stream together.
@@ -103,15 +96,11 @@ groupBy ::
      Functor m => (a -> a -> Bool) -> Producer a m r -> Leaf (Producer a m) m r
 groupBy eq = loop
   where
-    loop node =
-      Node $
-      case getNode node of
-        ReturnF r -> ReturnF r
-        EffectF eff -> EffectF (fmap loop eff)
-        ConnectF con ->
-          let !(a, rest) = fsumOnly con
-          in ConnectF $
-             FInL $ Node $ ConnectF $ FInL (a, fmap loop (P.span (eq a) rest))
+    loop (Return r) = Return r
+    loop (Effect eff) = Effect (fmap loop eff)
+    loop (Connect con) =
+      let !(a, rest) = fsumOnly con
+      in Connect $ FInL $ Connect $ FInL (a, fmap loop (P.span (eq a) rest))
 
 -- | Groups consecutive equal stream elements together.
 --
@@ -143,12 +132,9 @@ intercalate ::
 intercalate separator = loop
   where
     loop :: Leaf (Leaf c m) m r -> Leaf c m r
-    loop node =
-      Node $
-      case getNode node of
-        ReturnF r -> ReturnF r
-        EffectF eff -> EffectF (fmap loop eff)
-        ConnectF con -> getNode $ fsumOnly con >>= loop'
+    loop (Return r) = Return r
+    loop (Effect eff) = Effect (fmap loop eff)
+    loop (Connect con) = fsumOnly con >>= loop'
     loop' :: Leaf (Leaf c m) m r -> Leaf c m r
     loop' node = forsOn i0 node (separator >>)
 

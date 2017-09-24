@@ -57,8 +57,7 @@ import Type.Family.Nat (Len, Pred)
 import Data.Functor.Sum (Sum(InL, InR))
 import Data.Functor.Product (Product(Pair))
 
-import Cobweb.Internal
-       (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF))
+import Cobweb.Internal (Node(Connect, Effect, Return))
 import Cobweb.Type.Combinators
        (All, FSum, IIndex, Remove, fdecompIdx, finl, finr, i0, lastIndex)
 import Cobweb.Type.Lemmata (iwithoutRetainsLength)
@@ -776,28 +775,22 @@ genericLinkOn ::
 {-# INLINE genericLinkOn #-}
 genericLinkOn ldecompose rdecompose lembed rembed n k = loop
   where
-    loop left right =
-      Node $
-      case getNode right of
-        ReturnF r -> ReturnF r
-        EffectF eff -> EffectF (fmap (loop left) eff)
-        ConnectF cons ->
-          case fdecompIdx k cons of
-            Left other -> ConnectF (rembed (fmap (loop left) other))
-            Right con ->
+    loop _ (Return r) = Return r
+    loop left (Effect eff) = Effect (fmap (loop left) eff)
+    loop left (Connect cons) =
+      case fdecompIdx k cons of
+        Left other -> Connect (rembed (fmap (loop left) other))
+        Right con ->
               -- The case statements are here for strictness; the
               -- point is to avoid accidentally retaining the
               -- reference to the node we're iterating over.
-              case annihilate left (rdecompose con) of
-                (left', right') -> getNode $ loop' right' left'
-    loop' right left =
-      Node $
-      case getNode left of
-        ReturnF r -> ReturnF r
-        EffectF eff -> EffectF (fmap (loop' right) eff)
-        ConnectF cons ->
-          case fdecompIdx n cons of
-            Left other -> ConnectF (lembed (fmap (loop' right) other))
-            Right con ->
-              case annihilate right (ldecompose con) of
-                (right', left') -> getNode $ loop left' right'
+          case annihilate left (rdecompose con) of
+            (left', right') -> loop' right' left'
+    loop' _ (Return r) = Return r
+    loop' right (Effect eff) = Effect (fmap (loop' right) eff)
+    loop' right (Connect cons) =
+      case fdecompIdx n cons of
+        Left other -> Connect (lembed (fmap (loop' right) other))
+        Right con ->
+          case annihilate right (ldecompose con) of
+            (right', left') -> loop left' right'

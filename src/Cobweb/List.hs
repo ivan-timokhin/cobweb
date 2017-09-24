@@ -51,8 +51,7 @@ import Control.Monad.Trans.Resource (MonadResource(liftResourceT))
 import Data.Semigroup (Semigroup((<>)))
 
 import Cobweb.Core (i0, mapOn)
-import Cobweb.Internal
-       (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF))
+import Cobweb.Internal (Node(Connect, Effect, Return))
 import Cobweb.Producer (Producer, for, yield)
 
 -- | A monad transformer that adds ‘choose both’-style 'Alternative'
@@ -133,11 +132,8 @@ instance MonadResource m => MonadResource (ListT m) where
 instance MMonad ListT where
   embed f = ListT . loop . runListT
     where
-      loop node =
-        Node $
-        case getNode node of
-          -- u is () here, but forcing that via pattern match would
-          -- effectively change last @return@ into @return $!@
-          ReturnF u -> ReturnF u
-          ConnectF con -> ConnectF (fmap loop con)
-          EffectF eff -> getNode $ for (runListT (f eff)) loop
+      -- u is () here, but forcing that via pattern match would
+      -- effectively change last @return@ into @return $!@
+      loop (Return u) = Return u
+      loop (Connect con) = Connect (fmap loop con)
+      loop (Effect eff) = for (runListT (f eff)) loop

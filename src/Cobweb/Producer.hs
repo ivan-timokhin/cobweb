@@ -43,8 +43,7 @@ import Type.Family.List (Last, Null)
 import Cobweb.Core
        (Leaf, Producer, Yielding, eachOn, forOn, inspectLeaf, leafOn, mapOn,
         yieldOn)
-import Cobweb.Internal
-       (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF))
+import Cobweb.Internal (Node(Connect, Effect, Return))
 import Cobweb.Type.Combinators
        (All, IIndex, fsumOnly, i0, lastIndex)
 
@@ -144,16 +143,13 @@ span ::
      Functor m => (a -> Bool) -> Producer a m r -> Producer a m (Producer a m r)
 span predicate = loop
   where
-    loop node =
-      Node $
-      case getNode node of
-        ReturnF r -> ReturnF (pure r)
-        EffectF eff -> EffectF (fmap loop eff)
-        ConnectF con ->
-          let !(a, _) = fsumOnly con
-          in if predicate a
-               then ConnectF (fmap loop con)
-               else ReturnF (Node (ConnectF con))
+    loop (Return r) = Return (pure r)
+    loop (Effect eff) = Effect (fmap loop eff)
+    loop (Connect con) =
+      let !(a, _) = fsumOnly con
+      in if predicate a
+           then Connect (fmap loop con)
+           else Return (Connect con)
 
 -- | Split the stream at @n@th connection, and return the rest.
 --
@@ -169,9 +165,6 @@ span predicate = loop
 splitAt :: (Functor c, Functor m) => Int -> Leaf c m r -> Leaf c m (Leaf c m r)
 splitAt n node
   | n <= 0 = pure node
-  | otherwise =
-    Node $
-    case getNode node of
-      ReturnF r -> ReturnF (pure r)
-      EffectF eff -> EffectF (fmap (splitAt n) eff)
-      ConnectF con -> ConnectF (fmap (splitAt (n - 1)) con)
+splitAt _ (Return r) = Return (pure r)
+splitAt n (Effect eff) = Effect (fmap (splitAt n) eff)
+splitAt n (Connect con) = Connect (fmap (splitAt (n - 1)) con)

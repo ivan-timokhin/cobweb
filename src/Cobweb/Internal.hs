@@ -6,15 +6,11 @@ License: BSD3
 Maintainer: timokhin.iv@gmail.com
 Stability: experimental
 
-Underneath, 'Node' is
+Underneath, 'Node' is a free monad over sum of @m@ and all of
+communication functors.
 
-  * a free monad over sum of @m@ and all of communication functors,
-    and
-
-  * a fixed point of 'NodeF' functor.
-
-The first point has important implication in that 'Node' violates
-monad transformer laws.  Both of them, actually:
+This has important implication in that 'Node' violates monad
+transformer laws.  Both of them, actually:
 
   [@'lift' . 'return' = 'return'@] is violated because the former has
   an 'EffectF' layer on top, while the latter is purely 'ReturnF';
@@ -37,20 +33,15 @@ channels, with no effects from the base monad required.
 {-# OPTIONS_HADDOCK show-extensions #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Cobweb.Internal
-  ( NodeF(ReturnF, EffectF, ConnectF)
-  , Node(Node, getNode)
+  ( Node(Return, Connect, Effect)
   , cata
-  , transform
   , unsafeHoist
   , transformCons
   , inspect
@@ -73,24 +64,8 @@ import Control.Monad.Trans (MonadTrans(lift))
 import Control.Monad.Trans.Resource (MonadResource(liftResourceT))
 import Control.Monad.Writer.Class
        (MonadWriter(listen, pass, tell, writer), censor)
-import Data.Bifunctor (Bifunctor(first, second))
 
 import Cobweb.Type.Combinators (All, FSum)
-
--- | The base functor of 'Node'.
-data NodeF (cs :: [* -> *]) (m :: * -> *) r a
-  = ReturnF r -- ^ The computation has completed, producing resulting value.
-  | EffectF (m a) -- ^ Invoke effect in the base monad.
-  | ConnectF (FSum cs a) -- ^ Initiate communcation on one of the channels.
-
-deriving instance
-         (All Functor cs, Functor m) => Functor (NodeF cs m r)
-
-instance (All Functor cs, Functor m) => Bifunctor (NodeF cs m) where
-  first f (ReturnF r) = ReturnF (f r)
-  first _ (EffectF eff) = EffectF eff
-  first _ (ConnectF con) = ConnectF con
-  second = fmap
 
 -- | A monad transformer that extends the underlying monad @m@ with a
 -- capacity to communicate on a list of channels @cs@.
@@ -107,60 +82,56 @@ instance (All Functor cs, Functor m) => Bifunctor (NodeF cs m) where
 -- third.  "Cobweb.Core" provides aliases for these (most common)
 -- channel types: 'Cobweb.Core.Yielding' for @(,)@, and
 -- 'Cobweb.Core.Awaiting' for @(->)@.
-newtype Node cs m r = Node
-  { getNode :: NodeF cs m r (Node cs m r)
-  }
+data Node cs m r
+  = Return r -- ^ The computation has completed, producing resulting value.
+  | Effect (m (Node cs m r)) -- ^ Invoke effect in the base monad.
+  | Connect (FSum cs (Node cs m r)) -- ^ Initiate communcation on one
+                                    -- of the channels.
 
 -- | Fold a 'Node'
-cata :: (All Functor cs, Functor m) => (NodeF cs m r a -> a) -> Node cs m r -> a
-{-# INLINE cata #-}
-cata alg = c
-  where
-    c = alg . fmap c . getNode
-
--- | Convert 'Node' from one set of parameters to another, one level
--- at a time.
-transform ::
+cata ::
      (All Functor cs, Functor m)
-  => (NodeF cs m r (Node cs' m' r') -> NodeF cs' m' r' (Node cs' m' r'))
+  => (r -> a)
+  -> (FSum cs a -> a)
+  -> (m a -> a)
   -> Node cs m r
-  -> Node cs' m' r'
-{-# INLINE transform #-}
-transform alg = cata (Node . alg)
+  -> a
+{-# INLINE cata #-}
+cata algR algC algE = loop
+  where
+    loop (Return r) = algR r
+    loop (Connect con) = algC (fmap loop con)
+    loop (Effect eff) = algE (fmap loop eff)
 
 instance (All Functor cs, Functor m) => Functor (Node cs m) where
-  fmap f = transform (first f)
+  fmap f x = x >>= (pure . f)
 
 instance (All Functor cs, Functor m) => Applicative (Node cs m) where
-  pure = Node . ReturnF
+  pure = Return
   (<*>) = ap
   (*>) = (>>)
 
 instance (All Functor cs, Functor m) => Monad (Node cs m) where
-  (Node x) >>= f = bind_ f x
+  (>>=) = bind_
 
 bind_ ::
      (All Functor cs, Functor m)
-  => (a -> Node cs m b)
-  -> NodeF cs m a (Node cs m a)
+  => Node cs m a
+  -> (a -> Node cs m b)
   -> Node cs m b
 {-# INLINE[0] bind_ #-}
-bind_ f x = transform alg (Node x)
-  where
-    alg (ReturnF a) = getNode (f a)
-    alg (EffectF eff) = EffectF eff
-    alg (ConnectF con) = ConnectF con
+bind_ x f = cata f Connect Effect x
 
 {-# RULES
-"cobweb/bind_/return" forall a f . bind_ f (ReturnF a) = f a
+"cobweb/bind_/return" forall a f . bind_ (Return a) f = f a
 "cobweb/bind_/connect" forall con f.
-  bind_ f (ConnectF con) = Node (ConnectF (fmap (bind_ f . getNode) con))
+  bind_ (Connect con) f = Connect (fmap (`bind_` f) con)
 "cobweb/bind_/effect" forall eff f.
-  bind_ f (EffectF eff) = Node (EffectF (fmap (bind_ f . getNode) eff))
+  bind_ (Effect eff) f = Effect (fmap (`bind_` f) eff)
  #-}
 
 instance MonadTrans (Node cs) where
-  lift eff = Node $ EffectF $ fmap (Node . ReturnF) eff
+  lift eff = Effect $ fmap Return eff
 
 instance (All Functor cs, MonadIO m) => MonadIO (Node cs m) where
   liftIO = lift . liftIO
@@ -175,11 +146,8 @@ liftCatch ::
   -> Node cs m a
   -> (e -> Node cs m a)
   -> Node cs m a
-liftCatch catchBase node handler = transform alg node
-  where
-    alg (ReturnF r) = ReturnF r
-    alg (ConnectF con) = ConnectF con
-    alg (EffectF eff) = EffectF $ eff `catchBase` (pure . handler)
+liftCatch catchBase node handler =
+  cata Return Connect (\eff -> Effect $ eff `catchBase` (pure . handler)) node
 
 instance (All Functor cs, MonadError e m) => MonadError e (Node cs m) where
   throwError = lift . throwError
@@ -203,29 +171,23 @@ instance (All Functor cs, MonadWriter w m) => MonadWriter w (Node cs m) where
   tell = lift . tell
   listen = loop mempty
     where
-      loop !m node =
-        Node $
-        case getNode node of
-          ReturnF r -> ReturnF (r, m)
-          ConnectF con -> ConnectF (fmap (loop m) con)
-          EffectF eff ->
-            EffectF $ do
-              (x, w) <- listen eff
-              pure (loop (m `mappend` w) x)
+      loop !m (Return r) = Return (r, m)
+      loop !m (Connect con) = Connect (fmap (loop m) con)
+      loop !m (Effect eff) =
+        Effect $ do
+          (x, w) <- listen eff
+          pure (loop (m `mappend` w) x)
   pass = loop mempty
     where
-      loop !m node =
-        Node $
-        case getNode node of
-          ReturnF (r, f) ->
-            EffectF $ do
-              tell (f m)
-              pure (pure r)
-          ConnectF con -> ConnectF (fmap (loop m) con)
-          EffectF eff ->
-            EffectF $ do
-              (x, w) <- censor (const mempty) (listen eff)
-              pure (loop (m `mappend` w) x)
+      loop !m (Return (r, f)) =
+        Effect $ do
+          tell (f m)
+          pure (pure r)
+      loop !m (Connect con) = Connect (fmap (loop m) con)
+      loop !m (Effect eff) =
+        Effect $ do
+          (x, w) <- censor (const mempty) (listen eff)
+          pure (loop (m `mappend` w) x)
 
 instance (All Functor cs, MonadState s m) => MonadState s (Node cs m) where
   get = lift get
@@ -256,12 +218,9 @@ instance All Functor cs => MFunctor (Node cs) where
 instance All Functor cs => MMonad (Node cs) where
   embed f = loop
     where
-      loop node =
-        Node $
-        case getNode node of
-          ReturnF r -> ReturnF r
-          ConnectF con -> ConnectF (fmap loop con)
-          EffectF eff -> getNode $ f eff >>= loop
+      loop (Return r) = Return r
+      loop (Connect con) = Connect (fmap loop con)
+      loop (Effect eff) = f eff >>= loop
 
 -- | Same as 'hoist', but potentially unsafe when the function passed
 -- is /not/ a proper monad morphism.
@@ -281,11 +240,7 @@ unsafeHoist ::
   => (forall x. m x -> n x)
   -> Node cs m r
   -> Node cs n r
-unsafeHoist f = transform alg
-  where
-    alg (ReturnF r) = ReturnF r
-    alg (ConnectF con) = ConnectF con
-    alg (EffectF eff) = EffectF (f eff)
+unsafeHoist f = cata Return Connect (Effect . f)
 
 -- | Transform a full communication stack of a 'Node'.
 --
@@ -298,20 +253,16 @@ transformCons ::
      -- ^ Transform each communication request.
   -> Node cs m r
   -> Node cs' m r
-transformCons f = transform alg
-  where
-    alg (ReturnF r) = ReturnF r
-    alg (ConnectF con) = ConnectF (f con)
-    alg (EffectF eff) = EffectF eff
+transformCons f = cata Return (Connect . f) Effect
 
 -- | Run the 'Node' until it either completes, or initiates
 -- communication on one of its channels.
 inspect :: Monad m => Node cs m r -> m (Either r (FSum cs (Node cs m r)))
-inspect (Node web) =
-  case web of
-    ReturnF r -> pure (Left r)
-    EffectF eff -> eff >>= inspect
-    ConnectF con -> pure (Right con)
+inspect node =
+  case node of
+    Return r -> pure (Left r)
+    Effect eff -> eff >>= inspect
+    Connect con -> pure (Right con)
 
 -- | Build a 'Node' by unfolding from a seed.
 unfold ::
@@ -323,9 +274,9 @@ unfold ::
   -> Node cs m r
 unfold step = loop
   where
-    loop seed = Node (EffectF (fmap (Node . loopstep) (step seed)))
-    loopstep (Left r) = ReturnF r
-    loopstep (Right con) = ConnectF (fmap loop con)
+    loop seed = Effect (fmap loopstep (step seed))
+    loopstep (Left r) = Return r
+    loopstep (Right con) = Connect (fmap loop con)
 
 -- | Transform 'Node' to a ‘canonical’ form, where monad transformer
 -- laws hold structurally.

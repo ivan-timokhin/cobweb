@@ -43,9 +43,7 @@ import qualified Control.Monad.Writer.Strict as WS
 import qualified Control.Monad.Writer.Lazy as WL
 
 import Cobweb.Core (Node, connects, forsAll, run)
-import Cobweb.Internal
-       (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF),
-        unsafeHoist)
+import Cobweb.Internal (Node(Connect, Effect, Return), unsafeHoist)
 import Cobweb.Type.Combinators (All)
 
 -- | Move a single transformer layer from ‘beneath’ the 'Node' to
@@ -132,16 +130,13 @@ runWriterN ::
   -> Node cs m (a, w)
 runWriterN = loop mempty
   where
-    loop !w node =
-      Node $
-      case getNode node of
-        ReturnF a -> ReturnF (a, w)
-        ConnectF con -> ConnectF (fmap (loop w) con)
-        EffectF eff ->
-          EffectF $ do
-            (eff', !w') <- WS.runWriterT eff
-            let !w'' = w `mappend` w'
-            pure $ loop w'' eff'
+    loop !w (Return a) = Return (a, w)
+    loop !w (Connect con) = Connect (fmap (loop w) con)
+    loop !w (Effect eff) =
+      Effect $ do
+        (eff', !w') <- WS.runWriterT eff
+        let !w'' = w `mappend` w'
+        pure $ loop w'' eff'
 
 -- | Run 'WS.WriterT', returning only the output.
 execWriterN ::
@@ -157,15 +152,12 @@ runLazyWriterN ::
   -> Node cs m (a, w)
 runLazyWriterN = loop mempty
   where
-    loop w node =
-      Node $
-      case getNode node of
-        ReturnF a -> ReturnF (a, w)
-        ConnectF con -> ConnectF (fmap (loop w) con)
-        EffectF eff ->
-          EffectF $ do
-            (eff', w') <- WL.runWriterT eff
-            pure $ loop (w `mappend` w') eff'
+    loop w (Return a) = Return (a, w)
+    loop w (Connect con) = Connect (fmap (loop w) con)
+    loop w (Effect eff) =
+      Effect $ do
+        (eff', w') <- WL.runWriterT eff
+        pure $ loop (w `mappend` w') eff'
 
 -- | Run 'WL.WriterT', returning both the value and the output.
 execLazyWriterN ::

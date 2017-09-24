@@ -50,8 +50,7 @@ import Control.Monad.Trans (lift)
 import Data.Proxy (Proxy(Proxy))
 
 import Cobweb.Core (Producer, Yielding, yieldOn)
-import Cobweb.Internal
-       (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF))
+import Cobweb.Internal (Node(Connect, Effect, Return))
 import Cobweb.Type.Combinators
        (All, IIndex, Remove, Replace, fdecompIdx, fdecompReplaceIdx,
         fsumOnly, replaceIdx)
@@ -70,15 +69,13 @@ foldNode ::
 {-# INLINE foldNode #-}
 foldNode comb seed fin = loop seed
   where
-    loop !z node =
-      case getNode node of
-        ReturnF r -> pure (fin z, r)
-        EffectF eff -> do
-          rest <- eff
-          loop z rest
-        ConnectF con ->
-          case fsumOnly con of
-            (a, rest) -> loop (z `comb` a) rest
+    loop !z (Return r) = pure (fin z, r)
+    loop !z (Effect eff) = do
+      rest <- eff
+      loop z rest
+    loop !z (Connect con) =
+      case fsumOnly con of
+        (a, rest) -> loop (z `comb` a) rest
 
 -- | Same as 'foldNode', but discard 'Producer' return value.
 foldNode_ :: Monad m => (x -> a -> x) -> x -> (x -> b) -> Producer a m r -> m b
@@ -104,19 +101,17 @@ foldMNode comb seed fin =
     !z <- seed
     loop z node
   where
-    loop !z node =
-      case getNode node of
-        ReturnF r -> do
-          !b <- fin z
-          return (b, r)
-        EffectF eff -> do
-          rest <- eff
-          loop z rest
-        ConnectF con ->
-          case fsumOnly con of
-            (a, rest) -> do
-              !z' <- z `comb` a
-              loop z' rest
+    loop !z (Return r) = do
+      !b <- fin z
+      pure (b, r)
+    loop !z (Effect eff) = do
+      rest <- eff
+      loop z rest
+    loop !z (Connect con) =
+      case fsumOnly con of
+        (a, rest) -> do
+          !z' <- z `comb` a
+          loop z' rest
 
 -- | Same as 'foldMNode', but discard 'Producer' return value.
 foldMNode_ ::
@@ -138,15 +133,12 @@ foldOn ::
 {-# INLINE foldOn #-}
 foldOn n comb seed fin = loop seed
   where
-    loop !z (Node node) =
-      Node $
-      case node of
-        ReturnF r -> ReturnF (fin z, r)
-        EffectF eff -> EffectF (fmap (loop z) eff)
-        ConnectF con ->
-          case fdecompIdx n con of
-            Right (a, rest) -> getNode $ loop (comb z a) rest
-            Left other -> ConnectF (fmap (loop z) other)
+    loop !z (Return r) = Return (fin z, r)
+    loop !z (Effect eff) = Effect (fmap (loop z) eff)
+    loop !z (Connect con) =
+      case fdecompIdx n con of
+        Right (a, rest) -> loop (comb z a) rest
+        Left other -> Connect (fmap (loop z) other)
 
 -- | Same as 'foldOn', but discard original return value.
 foldOn_ ::
@@ -173,17 +165,14 @@ foldMOn ::
   -> Node cs m r
   -> Node (Remove n cs) m (b, r)
 {-# INLINE foldMOn #-}
-foldMOn n comb seed fin = \node' -> Node (EffectF (fmap (flip loop node') seed))
+foldMOn n comb seed fin = \node' -> Effect (fmap (flip loop node') seed)
   where
-    loop !z (Node node) =
-      Node $
-      case node of
-        ReturnF r -> EffectF (fmap (\b -> pure (b, r)) (fin z))
-        EffectF eff -> EffectF (fmap (loop z) eff)
-        ConnectF con ->
-          case fdecompIdx n con of
-            Left other -> ConnectF (fmap (loop z) other)
-            Right (a, rest) -> EffectF (fmap (flip loop rest) (comb z a))
+    loop !z (Return r) = Effect (fmap (\b -> pure (b, r)) (fin z))
+    loop !z (Effect eff) = Effect (fmap (loop z) eff)
+    loop !z (Connect con) =
+      case fdecompIdx n con of
+        Left other -> Connect (fmap (loop z) other)
+        Right (a, rest) -> Effect (fmap (flip loop rest) (comb z a))
 
 -- | Same as 'foldMOn', but discard original return value.
 foldMOn_ ::
@@ -246,19 +235,15 @@ scanOn ::
 scanOn n comb seed fin = (yieldOn n' (fin seed) >>) . loop seed
   where
     n' = replaceIdx n
-    loop !z (Node node) =
-      Node $
-      case node of
-        ReturnF r -> ReturnF r
-        EffectF eff -> EffectF (fmap (loop z) eff)
-        ConnectF con ->
-          case fdecompReplaceIdx n (Proxy :: Proxy (Yielding b)) con of
-            Left other -> ConnectF (fmap (loop z) other)
-            Right (a, rest) ->
-              getNode $ do
-                let !z' = comb z a
-                yieldOn n' (fin z')
-                loop z' rest
+    loop !_ (Return r) = Return r
+    loop !z (Effect eff) = Effect (fmap (loop z) eff)
+    loop !z (Connect con) =
+      case fdecompReplaceIdx n (Proxy :: Proxy (Yielding b)) con of
+        Left other -> Connect (fmap (loop z) other)
+        Right (a, rest) -> do
+          let !z' = comb z a
+          yieldOn n' (fin z')
+          loop z' rest
 
 -- | Same as 'scanOn', but with possible effects in the base monad.
 --
@@ -310,20 +295,16 @@ scanOnM n comb seed fin =
     loop seed' node
   where
     n' = replaceIdx n
-    loop !z (Node node') =
-      Node $
-      case node' of
-        ReturnF r -> ReturnF r
-        EffectF eff -> EffectF (fmap (loop z) eff)
-        ConnectF con ->
-          case fdecompReplaceIdx n (Proxy :: Proxy (Yielding b)) con of
-            Left other -> ConnectF (fmap (loop z) other)
-            Right (a, rest) ->
-              getNode $ do
-                !z' <- lift $ comb z a
-                b <- lift $ fin z'
-                yieldOn n' b
-                loop z' rest
+    loop !_ (Return r) = Return r
+    loop !z (Effect eff) = Effect (fmap (loop z) eff)
+    loop !z (Connect con) =
+      case fdecompReplaceIdx n (Proxy :: Proxy (Yielding b)) con of
+        Left other -> Connect (fmap (loop z) other)
+        Right (a, rest) -> do
+          !z' <- lift $ comb z a
+          b <- lift $ fin z'
+          yieldOn n' b
+          loop z' rest
 
 -- $list
 --

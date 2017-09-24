@@ -44,8 +44,7 @@ import Type.Class.Known (Known)
 import Type.Family.List (type (++))
 
 import Cobweb.Core (Awaiting, Yielding, awaitOn, yieldOn)
-import Cobweb.Internal
-       (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF))
+import Cobweb.Internal (Node(Connect, Effect, Return))
 import Cobweb.Type.Combinators
        (All, FSum(FInL, FInR), IIndex, Remove, fdecompIdx, finl, finr, i0,
         i1, i2, i3)
@@ -150,31 +149,23 @@ zipsWith combine n k = flip loopLeft
          Node rcs m r
       -> Node lcs m r
       -> Node (c : (Remove n lcs ++ Remove k rcs)) m r
-    loopLeft right left =
-      Node $
-      case getNode left of
-        ReturnF r -> ReturnF r
-        EffectF eff -> EffectF (fmap (loopLeft right) eff)
-        ConnectF con ->
-          case fdecompIdx n con of
-            Left other ->
-              ConnectF (FInR $ finl proxyR (fmap (loopLeft right) other))
-            Right c -> getNode $ loopRight c right
+    loopLeft _ (Return r) = Return r
+    loopLeft right (Effect eff) = Effect (fmap (loopLeft right) eff)
+    loopLeft right (Connect con) =
+      case fdecompIdx n con of
+        Left other -> Connect (FInR $ finl proxyR (fmap (loopLeft right) other))
+        Right c -> loopRight c right
     loopRight ::
          lc (Node lcs m r)
       -> Node rcs m r
       -> Node (c : (Remove n lcs ++ Remove k rcs)) m r
-    loopRight left right =
-      Node $
-      case getNode right of
-        ReturnF r -> ReturnF r
-        EffectF eff -> EffectF (fmap (loopRight left) eff)
-        ConnectF con ->
-          case fdecompIdx k con of
-            Left other ->
-              ConnectF (FInR $ finr proxyL (fmap (loopRight left) other))
-            Right c ->
-              ConnectF (FInL $ fmap (uncurry (flip loopLeft)) (combine left c))
+    loopRight _ (Return r) = Return r
+    loopRight left (Effect eff) = Effect (fmap (loopRight left) eff)
+    loopRight left (Connect con) =
+      case fdecompIdx k con of
+        Left other -> Connect (FInR $ finr proxyL (fmap (loopRight left) other))
+        Right c ->
+          Connect (FInL $ fmap (uncurry (flip loopLeft)) (combine left c))
     proxyL :: Proxy (Remove n lcs)
     proxyL = Proxy
     proxyR :: Proxy (Remove k rcs)

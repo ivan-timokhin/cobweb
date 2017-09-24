@@ -84,8 +84,8 @@ import Type.Class.Witness (Witness((\\)))
 import Type.Family.List (type (++))
 
 import Cobweb.Internal
-       (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF), cata,
-        inspect, transform, transformCons, unfold)
+       (Node(Connect, Effect, Return), cata, inspect, transformCons,
+        unfold)
 import Cobweb.Type.Combinators
        (All, FSum, IIndex, Remove, Replace, absurdFSum, fdecompIdx,
         fdecompReplaceIdx, finjectIdx, finl, finr, freplaceIdx, fsumOnly,
@@ -129,11 +129,7 @@ type Consumer a = Leaf (Awaiting a)
 -- | Run a node with no open channels in the base monad.
 run :: Monad m => Effect m r -> m r
 {-# INLINE run #-}
-run = cata alg
-  where
-    alg (ReturnF r) = pure r
-    alg (EffectF eff) = join eff
-    alg (ConnectF con) = absurdFSum con
+run = cata pure absurdFSum join
 
 -- | 'inspect' a 'Leaf'.
 inspectLeaf ::
@@ -145,7 +141,7 @@ inspectLeaf = fmap (second fsumOnly) . inspect
 -- In practice, it is almost always preferable to use 'connectsOn', or
 -- specialised versions ('yieldOn', 'awaitOn').
 connects :: All Functor cs => FSum cs r -> Node cs m r
-connects con = Node $ ConnectF $ fmap (Node . ReturnF) con
+connects con = Connect $ fmap Return con
 
 -- | Initiate a connection on a channel specified by an index.
 --
@@ -168,7 +164,7 @@ connects con = Node $ ConnectF $ fmap (Node . ReturnF) con
 -- @
 connectsOn :: Functor c => IIndex n cs c -> c r -> Node cs m r
 {-# INLINE connectsOn #-}
-connectsOn n con = Node $ ConnectF $ finjectIdx n $ fmap (Node . ReturnF) con
+connectsOn n con = Connect $ finjectIdx n $ fmap Return con
 
 -- | Provide a value on a channel specified by an index.
 --
@@ -289,15 +285,13 @@ mapsOnM ::
      -- apply to the channel.
   -> Node cs m r
   -> Node (Replace n cs c') m r
-mapsOnM n f = transform alg
+mapsOnM n f = cata Return alg Effect
   where
-    alg (ReturnF r) = ReturnF r
-    alg (EffectF eff) = EffectF eff
-    alg (ConnectF con) =
+    alg con =
       case fdecompReplaceIdx n (Proxy :: Proxy c') con of
         Right c ->
-          EffectF (fmap (Node . ConnectF . finjectIdx (replaceIdx n)) (f c))
-        Left c -> ConnectF c
+          Effect (fmap (Connect . finjectIdx (replaceIdx n)) (f c))
+        Left c -> Connect c
 
 -- | Transform a single channel of a 'Node', with possible monadic
 -- effects inside a new channel functor.
@@ -329,7 +323,7 @@ mapsOnM' ::
      -- apply to the channel.
   -> Node cs m r
   -> Node (Replace n cs c') m r
-mapsOnM' n f = transformCons (freplaceIdx n (fmap (Node . EffectF) . f))
+mapsOnM' n f = transformCons (freplaceIdx n (fmap Effect . f))
 
 -- | Transform an outgoing stream of values on a specified channel.
 --
@@ -475,11 +469,7 @@ forsAll ::
   => Node cs m r
   -> (forall x. FSum cs x -> Node cs' m x)
   -> Node cs' m r
-forsAll node f = transform alg node
-  where
-    alg (ReturnF r) = ReturnF r
-    alg (EffectF eff) = EffectF eff
-    alg (ConnectF con) = getNode $ join (f con)
+forsAll node f = cata Return (join . f) Effect node
 
 -- | Substitute each attempt to communicate on a given channel with a
 -- computation with a different list of channels.

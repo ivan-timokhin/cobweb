@@ -37,8 +37,7 @@ import Control.Monad.Trans (lift)
 import Cobweb.Core
        (Awaiting, Consumer, Leaf, Node, awaitOn, i0, inspectLeaf, leafOn,
         preforOn, premapOn)
-import Cobweb.Internal
-       (Node(Node, getNode), NodeF(ConnectF, EffectF, ReturnF))
+import Cobweb.Internal (Node(Connect, Effect, Return))
 import Cobweb.Type.Combinators (All, IIndex)
 
 -- | Produce a value on the first channel of a 'Node'.
@@ -132,11 +131,8 @@ consumeOn = leafOn
 --
 -- See also 'Cobweb.Producer.splitAt'
 splitAt :: (Functor c, Functor m) => Int -> Leaf c m r -> Leaf c m (Leaf c m r)
-splitAt n node =
-  Node $
-  case getNode node of
-    ReturnF r -> ReturnF (pure r)
-    EffectF eff -> EffectF (fmap (splitAt n) eff)
-    ConnectF con
-      | n <= 0 -> getNode $ pure node
-      | otherwise -> ConnectF (fmap (splitAt (n - 1)) con)
+splitAt _ (Return r) = Return (pure r)
+splitAt n (Effect eff) = Effect (fmap (splitAt n) eff)
+splitAt n node@(Connect con)
+  | n <= 0 = pure node
+  | otherwise = Connect (fmap (splitAt (n - 1)) con)
