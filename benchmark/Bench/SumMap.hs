@@ -3,6 +3,7 @@ module Bench.SumMap
   ) where
 
 import qualified Cobweb as W
+import qualified Cobweb.Link as W
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as C
 import qualified Data.Machine as M
@@ -10,6 +11,7 @@ import qualified Data.Machine.Runner as M
 import qualified Pipes as P
 import qualified Pipes.Prelude as P
 import qualified Streaming.Prelude as S
+import qualified Data.List as L
 
 import Criterion.Main (Benchmark, bench, bgroup, whnf)
 import Data.Functor.Identity (Identity(runIdentity))
@@ -23,12 +25,14 @@ benchSumMap n =
     , bench "pipes" $ whnf sumMapP n
     , bench "machines" $ whnf sumMapM n
     , bench "streaming" $ whnf sumMapS n
+    , bench "list" $ whnf sumMapL n
     ]
 
 sumMapW :: Int -> Int
 {-# NOINLINE sumMapW #-}
 sumMapW n =
-  runIdentity $ W.foldNode_ (+) 0 id $ W.each [1 .. n] W.>-> W.mapping (+ 2)
+  runIdentity $
+  W.foldNode_ (+) 0 id $ W.linkOn W.i0 W.i0 (W.each [1 .. n]) (W.mapping (+ 2))
 
 sumMapC :: Int -> Int
 {-# NOINLINE sumMapC #-}
@@ -47,3 +51,7 @@ sumMapM n =
 sumMapS :: Int -> Int
 {-# NOINLINE sumMapS #-}
 sumMapS n = runIdentity $ S.fold_ (+) 0 id $ S.map (+ 2) $ S.each [1 .. n]
+
+sumMapL :: Int -> Int
+{-# NOINLINE sumMapL #-}
+sumMapL n = L.foldl' (+) 0 $ L.map (+ 2) [1 .. n]
