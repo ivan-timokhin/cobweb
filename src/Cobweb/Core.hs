@@ -139,6 +139,7 @@ inspectLeaf = fmap (second fsumOnly) . inspect
 -- In practice, it is almost always preferable to use 'connectsOn', or
 -- specialised versions ('yieldOn', 'awaitOn').
 connects :: All Functor cs => FSum cs r -> Node cs m r
+{-# INLINE connects #-}
 connects con = Connect $ fmap Return con
 
 -- | Initiate a connection on a channel specified by an index.
@@ -196,6 +197,7 @@ eachOn n = traverse_ (yieldOn n)
 -- 'awaitOn' 'i2' :: 'Node' (c0 : c1 : 'Awaiting' a : cs) m a
 -- @
 awaitOn :: IIndex n cs (Awaiting a) -> Node cs m a
+{-# INLINE awaitOn #-}
 awaitOn n = connectsOn n id
 
 -- | Run an entire 'Leaf' within a bigger (in terms of channels)

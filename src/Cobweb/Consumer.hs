@@ -50,7 +50,13 @@ import Cobweb.Type.Combinators (All, IIndex)
 -- 'await' :: 'Cobweb.Pipe.Pipe' a b m a
 -- @
 await :: Node (Awaiting a : cs) m a
+{-# NOINLINE await #-}
 await = awaitOn i0
+
+-- GHC refuses to inline @await@ normally (probably because it's just
+-- a value, and it can't see any benefit in inlining it), so here's a
+-- more forceful version.
+{-# RULES "cobweb/await" await = awaitOn i0 #-}
 
 -- | Consume values indefinitely, by feeding them into a provided
 -- action.
