@@ -78,19 +78,17 @@ import Control.Monad (join)
 import Data.Bifunctor (second, first)
 import Data.Foldable (traverse_)
 import Data.Proxy (Proxy(Proxy))
-import Data.Type.Length (Length)
-import Type.Class.Known (Known)
 import Type.Class.Witness (Witness((\\)))
-import Type.Family.List (type (++))
 
 import Cobweb.Internal
        (Node(Connect, Effect, Return), cata, inspect, transformCons,
         unfold)
 import Cobweb.Type.Combinators
-       (All, FSum, IIndex, Remove, Replace, absurdFSum, fdecompIdx,
-        fdecompReplaceIdx, finjectIdx, finl, finr, freplaceIdx, fsumOnly,
-        i0, i1, i10, i2, i3, i4, i5, i6, i7, i8, i9, replaceIdx)
-import Cobweb.Type.Lemmata (ireplacedRetainsAll, appendAll, iwithoutRetainsAll)
+       (All, Append, FSum, IIndex, Remove, Replace, absurdFSum,
+        fdecompIdx, fdecompReplaceIdx, finjectIdx, finl, finr, freplaceIdx,
+        fsumOnly, i0, i1, i10, i2, i3, i4, i5, i6, i7, i8, i9, replaceIdx)
+import Cobweb.Type.Lemmata
+       (appendAll, ireplacedRetainsAll, iwithoutRetainsAll)
 
 -- | A node with no channels, isomorphic to an effect in the base monad.
 --
@@ -246,12 +244,12 @@ mapsAll = transformCons
 --    -> 'Node' (c0 : c1 : c' : cs) m r
 -- @
 mapsOn ::
-     (Functor m, All Functor cs)
+     (Functor m, All Functor cs, Replace n cs c' cs')
   => IIndex n cs c -- ^ An index of a channel to be replaced.
   -> (forall x. c x -> c' x) -- ^ A natural transformation to apply
      -- to the channel.
   -> Node cs m r -- ^ A 'Node' with an old channel.
-  -> Node (Replace n cs c') m r -- ^ The same 'Node', but the channel in question is
+  -> Node cs' m r -- ^ The same 'Node', but the channel in question is
      -- replaced by a new one.
 mapsOn n f = mapsAll (freplaceIdx n f)
 
@@ -279,12 +277,12 @@ mapsOn n f = mapsAll (freplaceIdx n f)
 --    -> 'Node' (c0 : c1 : c' : cs) m r
 -- @
 mapsOnM ::
-     forall m cs n c' r c. (Functor m, All Functor cs)
+     forall m cs cs' n c' r c. (Functor m, All Functor cs, Replace n cs c' cs')
   => IIndex n cs c -- ^ An index of a channel to be replaced.
   -> (forall x. c x -> m (c' x)) -- ^ A natural transformation to
      -- apply to the channel.
   -> Node cs m r
-  -> Node (Replace n cs c') m r
+  -> Node cs' m r
 mapsOnM n f = cata Return alg Effect
   where
     alg con =
@@ -317,12 +315,12 @@ mapsOnM n f = cata Return alg Effect
 --    -> 'Node' (c0 : c1 : c' : cs) m r
 -- @
 mapsOnM' ::
-     (Functor m, All Functor cs, Functor c')
+     (Functor m, All Functor cs, Functor c', Replace n cs c' cs')
   => IIndex n cs c -- ^ An index of a channel to be replaced.
   -> (forall x. c x -> c' (m x)) -- ^ A natural transformation to
      -- apply to the channel.
   -> Node cs m r
-  -> Node (Replace n cs c') m r
+  -> Node cs' m r
 mapsOnM' n f = transformCons (freplaceIdx n (fmap Effect . f))
 
 -- | Transform an outgoing stream of values on a specified channel.
@@ -352,11 +350,11 @@ mapsOnM' n f = transformCons (freplaceIdx n (fmap Effect . f))
 --   -> 'Node' (c0 : c1 : 'Yielding' b : cs) m r
 -- @
 mapOn ::
-     (Functor m, All Functor cs)
+     (Functor m, All Functor cs, Replace n cs (Yielding b) cs')
   => IIndex n cs (Yielding a) -- ^ An index of a channel to be mapped over.
   -> (a -> b) -- ^ A function to apply to outgoing elements.
   -> Node cs m r -- ^ An old 'Node'.
-  -> Node (Replace n cs (Yielding b)) m r -- ^ Same node, but with the channel replaced.
+  -> Node cs' m r -- ^ Same node, but with the channel replaced.
 mapOn n f = mapsOn n (first f)
 
 -- | Transform an outgoing stream of values, with possible effects in
@@ -383,11 +381,11 @@ mapOn n f = mapsOn n (first f)
 --   -> 'Node' (c0 : c1 : 'Yielding' b : cs) m r
 -- @
 mapOnM ::
-     (Functor m, All Functor cs)
+     (Functor m, All Functor cs, Replace n cs (Yielding b) cs')
   => IIndex n cs (Yielding a) -- ^ An index of a channel to be mapped over.
   -> (a -> m b) -- ^ A function to apply to outgoing elements.
   -> Node cs m r -- ^ An old 'Node'.
-  -> Node (Replace n cs (Yielding b)) m r -- ^ Same node, but with channel replaced.
+  -> Node cs' m r -- ^ Same node, but with channel replaced.
 mapOnM n f = mapsOnM n (\(a, x) -> fmap (, x) (f a))
 
 -- | Transform an incoming stream of values on a specified channel.
@@ -417,13 +415,13 @@ mapOnM n f = mapsOnM n (\(a, x) -> fmap (, x) (f a))
 --   -> 'Node' (c0 : c1 : 'Awaiting' b : cs) m r
 -- @
 premapOn ::
-     (Functor m, All Functor cs)
+     (Functor m, All Functor cs, Replace n cs (Awaiting b) cs')
   => IIndex n cs (Awaiting a) -- ^ Index of the channel to be mapped
                               -- over.
   -> (b -> a) -- ^ The function to transform values received by a new
      -- 'Node' into the ones requested by the old one.
   -> Node cs m r -- ^ Original 'Node'.
-  -> Node (Replace n cs (Awaiting b)) m r -- ^ Same 'Node', but with the channel replaced.
+  -> Node cs' m r -- ^ Same 'Node', but with the channel replaced.
 premapOn n f = mapsOn n (. f)
 
 -- | Transform an incoming stream of values, with some effects in the
@@ -450,13 +448,13 @@ premapOn n f = mapsOn n (. f)
 --   -> 'Node' (c0 : c1 : 'Awaiting' b : cs) m r
 -- @
 premapOnM ::
-     (Applicative m, All Functor cs)
+     (Applicative m, All Functor cs, Replace n cs (Awaiting b) cs')
   => IIndex n cs (Awaiting a) -- ^ Index of the channel to be mapped
                               -- over.
   -> (b -> m a) -- ^ The function to transform values received by a new
      -- 'Node' into the ones requested by the old one.
   -> Node cs m r -- ^ Original 'Node'.
-  -> Node (Replace n cs (Awaiting b)) m r -- ^ Same 'Node', but with the channel replaced.
+  -> Node cs' m r -- ^ Same 'Node', but with the channel replaced.
 premapOnM n f = mapsOnM' n (\g -> fmap g . f)
 
 -- | Replace the current list of channels by substituting a
@@ -505,32 +503,39 @@ forsAll node f = cata Return (join . f) Effect node
 --    -> 'Node' ((c0 : c1 : cs) 'Type.Family.List.++' cs') m r
 -- @
 forsOn ::
-     forall m n cs cs' r c.
-     (Functor m, All Functor cs, Known Length (Remove n cs), All Functor cs')
+     forall m n cs ocs cs' rescs r c.
+     ( Functor m
+     , All Functor cs
+     , Remove n cs ocs
+     , Append ocs cs' rescs
+     , All Functor cs'
+     )
   => IIndex n cs c -- ^ A channel over which to loop.
   -> Node cs m r -- ^ A source of communication requests to loop over.
   -> (forall x. c x -> Node cs' m x) -- ^ Loop body.
-  -> Node (Remove n cs ++ cs') m r
+  -> Node rescs m r
 forsOn idx node f =
   forsOn_ idx node f \\
   appendAll
     (Proxy :: Proxy Functor)
-    (Proxy :: Proxy (Remove n cs))
+    (Proxy :: Proxy ocs)
     (Proxy :: Proxy cs') \\
   iwithoutRetainsAll (Proxy :: Proxy Functor) idx
 
 forsOn_ ::
-     forall m n cs cs' r c.
+     forall m n cs ocs cs' rescs r c.
      ( Functor m
      , All Functor cs
-     , All Functor (Remove n cs ++ cs')
+     , Remove n cs ocs
+     , All Functor ocs
      , All Functor cs'
-     , Known Length (Remove n cs)
+     , All Functor rescs
+     , Append ocs cs' rescs
      )
   => IIndex n cs c
   -> Node cs m r
   -> (forall x. c x -> Node cs' m x)
-  -> Node (Remove n cs ++ cs') m r
+  -> Node rescs m r
 forsOn_ n node f = forsAll node body
   where
     body con =
@@ -539,7 +544,7 @@ forsOn_ n node f = forsAll node body
         Right c -> mapsAll (finr proxyOuter) (f c)
     proxyInner :: Proxy cs'
     proxyInner = Proxy
-    proxyOuter :: Proxy (Remove n cs)
+    proxyOuter :: Proxy ocs
     proxyOuter = Proxy
 
 -- | Substitute each attempt to communicate on a specified channel
@@ -572,22 +577,28 @@ forsOn_ n node f = forsAll node body
 --    -> 'Node' (c0 : c1 : c' : cs) m r
 -- @
 forsOnLeaf ::
-     forall m n cs c' r c. (Functor m, All Functor cs, Functor c')
+     forall m n cs cs' c' r c.
+     (Functor m, All Functor cs, Functor c', Replace n cs c' cs')
   => IIndex n cs c -- ^ A channel over which to loop.
   -> Node cs m r -- ^ A source of communication requests to loop over.
   -> (forall x. c x -> Leaf c' m x) -- ^ Loop body.
-  -> Node (Replace n cs c') m r
+  -> Node cs' m r
 forsOnLeaf n node f =
   forsOnLeaf_ n node f \\
   ireplacedRetainsAll (Proxy :: Proxy c') (Proxy :: Proxy Functor) n
 
 forsOnLeaf_ ::
-     forall m n cs c' r c.
-     (Functor m, All Functor cs, Functor c', All Functor (Replace n cs c'))
+     forall m n cs c' cs' r c.
+     ( Functor m
+     , All Functor cs
+     , Functor c'
+     , Replace n cs c' cs'
+     , All Functor cs'
+     )
   => IIndex n cs c
   -> Node cs m r
   -> (forall x. c x -> Leaf c' m x)
-  -> Node (Replace n cs c') m r
+  -> Node cs' m r
 forsOnLeaf_ n node f = forsAll node body
   where
     body con =
@@ -627,11 +638,16 @@ forsOnLeaf_ n node f = forsAll node body
 --   -> 'Node' ((c0 : c1 : cs) 'Type.Family.List.++' cs') m r
 -- @
 forOn ::
-     (Functor m, All Functor cs, All Functor cs', Known Length (Remove n cs))
+     ( Functor m
+     , All Functor cs
+     , All Functor cs'
+     , Remove n cs ocs
+     , Append ocs cs' rescs
+     )
   => IIndex n cs (Yielding a) -- ^ A channel over which to loop.
   -> Node cs m r -- ^ A source of values to loop over.
   -> (a -> Node cs' m ()) -- ^ Loop body.
-  -> Node (Remove n cs ++ cs') m r
+  -> Node rescs m r
 forOn n node f = forsOn n node (\(a, r) -> r <$ f a)
 
 -- | Same as 'forOn', but new channel is substituted in-place for the
@@ -658,11 +674,11 @@ forOn n node f = forsOn n node (\(a, r) -> r <$ f a)
 --    -> 'Node' (c0 : c1 : c : cs) m r
 -- @
 forOnLeaf ::
-     (Functor m, All Functor cs, Functor c)
+     (Functor m, All Functor cs, Functor c, Replace n cs c cs')
   => IIndex n cs (Yielding a) -- ^ A channel over which to loop.
   -> Node cs m r -- ^ A source of values to loop over.
   -> (a -> Leaf c m ()) -- ^ Loop body.
-  -> Node (Replace n cs c) m r
+  -> Node cs' m r
 forOnLeaf n node f = forsOnLeaf n node (\(a, r) -> r <$ f a)
 
 -- | Loop over a 'Node', replacing each 'awaitOn' the specified
@@ -696,12 +712,17 @@ forOnLeaf n node f = forsOnLeaf n node (\(a, r) -> r <$ f a)
 --    -> 'Node' ((c0 : c1 : cs) 'Type.Family.List.++' cs') m r
 -- @
 preforOn ::
-     (Known Length (Remove n cs), Functor m, All Functor cs', All Functor cs)
+     ( Remove n cs ocs
+     , Functor m
+     , All Functor cs'
+     , All Functor cs
+     , Append ocs cs' rescs
+     )
   => IIndex n cs (Awaiting a) -- ^ A channel over which to loop.
   -> Node cs m r -- ^ A receiver of values.
   -> Node cs' m a -- ^ A provider of values, run once for each
                   -- 'awaitOn'.
-  -> Node (Remove n cs ++ cs') m r
+  -> Node rescs m r
 preforOn n node body = forsOn n node (<$> body)
 
 -- | Same as 'preforOn', but new channel is substituted in-place for the
@@ -728,11 +749,11 @@ preforOn n node body = forsOn n node (<$> body)
 --    -> 'Node' (c0 : c1 : c : cs) m r
 -- @
 preforOnLeaf ::
-     (Functor m, All Functor cs, Functor c)
+     (Functor m, All Functor cs, Functor c, Replace n cs c cs')
   => IIndex n cs (Awaiting a) -- ^ A channel over which to loop.
   -> Node cs m r -- ^ A receiver of values.
   -> Leaf c m a -- ^ A provider of values, run once for each 'awaitOn'.
-  -> Node (Replace n cs c) m r
+  -> Node cs' m r
 preforOnLeaf n node body = forsOnLeaf n node (<$> body)
 
 -- $indices

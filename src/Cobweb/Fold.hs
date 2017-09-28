@@ -122,14 +122,14 @@ foldMNode_ comb seed fin = fmap fst . foldMNode comb seed fin
 -- | Fold over values provided on one of the 'Node' channels, and add
 -- the result to the return value.
 foldOn ::
-     (Functor m, All Functor (Remove n cs))
+     (Functor m, Remove n cs cs', All Functor cs')
   => IIndex n cs (Yielding a) -- ^ The index of the channel to fold
                               -- over.
   -> (x -> a -> x) -- ^ Combining function.
   -> x -- ^ Seed.
   -> (x -> b) -- ^ Finalise accumulator.
   -> Node cs m r
-  -> Node (Remove n cs) m (b, r)
+  -> Node cs' m (b, r)
 {-# INLINE foldOn #-}
 foldOn n comb seed fin = loop seed
   where
@@ -142,13 +142,13 @@ foldOn n comb seed fin = loop seed
 
 -- | Same as 'foldOn', but discard original return value.
 foldOn_ ::
-     (Functor m, All Functor (Remove n cs))
+     (Functor m, Remove n cs cs', All Functor cs')
   => IIndex n cs (Yielding a)
   -> (x -> a -> x)
   -> x
   -> (x -> b)
   -> Node cs m r
-  -> Node (Remove n cs) m b
+  -> Node cs' m b
 {-# INLINE foldOn_ #-}
 foldOn_ n comb seed fin = fmap fst . foldOn n comb seed fin
 
@@ -157,13 +157,13 @@ foldOn_ n comb seed fin = fmap fst . foldOn n comb seed fin
 -- __Note:__ the action for seed is always run first, prior to
 -- anything in the 'Node'.
 foldMOn ::
-     (Functor m, All Functor (Remove n cs))
+     (Functor m, Remove n cs cs', All Functor cs')
   => IIndex n cs (Yielding a)
   -> (x -> a -> m x)
   -> m x
   -> (x -> m b)
   -> Node cs m r
-  -> Node (Remove n cs) m (b, r)
+  -> Node cs' m (b, r)
 {-# INLINE foldMOn #-}
 foldMOn n comb seed fin = \node' -> Effect (fmap (flip loop node') seed)
   where
@@ -176,13 +176,13 @@ foldMOn n comb seed fin = \node' -> Effect (fmap (flip loop node') seed)
 
 -- | Same as 'foldMOn', but discard original return value.
 foldMOn_ ::
-     (Functor m, All Functor (Remove n cs))
+     (Functor m, Remove n cs cs', All Functor cs')
   => IIndex n cs (Yielding a)
   -> (x -> a -> m x)
   -> m x
   -> (x -> m b)
   -> Node cs m r
-  -> Node (Remove n cs) m b
+  -> Node cs' m b
 {-# INLINE foldMOn_ #-}
 foldMOn_ n comb seed fin = fmap fst . foldMOn n comb seed fin
 
@@ -223,14 +223,15 @@ foldMOn_ n comb seed fin = fmap fst . foldMOn n comb seed fin
 --   -> 'Node' (c0 : c1 : 'Yielding' b : cs) m r
 -- @
 scanOn ::
-     forall m cs n x a b r. (Functor m, All Functor (Replace n cs (Yielding b)))
+     forall m cs cs' n x a b r.
+     (Functor m, Replace n cs (Yielding b) cs', All Functor cs')
   => IIndex n cs (Yielding a) -- ^ Index of the channel to scan over.
   -> (x -> a -> x) -- ^ Combining function.
   -> x -- ^ Seed.
   -> (x -> b) -- ^ Finalise accumulator (evaluated at every step to
      -- produce yielded value).
   -> Node cs m r
-  -> Node (Replace n cs (Yielding b)) m r
+  -> Node cs' m r
 {-# INLINE scanOn #-}
 scanOn n comb seed fin = (yieldOn n' (fin seed) >>) . loop seed
   where
@@ -278,14 +279,15 @@ scanOn n comb seed fin = (yieldOn n' (fin seed) >>) . loop seed
 --   -> 'Node' (c0 : c1 : 'Yielding' b : cs) m r
 -- @
 scanOnM ::
-     forall m cs n x a b r. (Monad m, All Functor (Replace n cs (Yielding b)))
+     forall m cs cs' n x a b r.
+     (Monad m, Replace n cs (Yielding b) cs', All Functor cs')
   => IIndex n cs (Yielding a) -- ^ Index of the channel to scan over.
   -> (x -> a -> m x) -- ^ Combining function.
   -> m x -- ^ Seed.
   -> (x -> m b) -- ^ Finalising function (called for each intermediate
                 -- result).
   -> Node cs m r
-  -> Node (Replace n cs (Yielding b)) m r
+  -> Node cs' m r
 {-# INLINE scanOnM #-}
 scanOnM n comb seed fin =
   \node -> do

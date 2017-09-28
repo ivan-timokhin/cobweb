@@ -49,13 +49,10 @@ module Cobweb.Duplex where
 import Control.Monad ((>=>))
 import Control.Monad.Trans (lift)
 import Data.Functor.Compose (Compose(Compose))
-import Data.Type.Length (Length)
-import Type.Class.Known (Known)
-import Type.Family.List (type (++))
 
 import Cobweb.Core
        (Awaiting, Leaf, Node, Tube, Yielding, connectsOn, forsOn, i0, i1)
-import Cobweb.Type.Combinators (All, IIndex, Remove)
+import Cobweb.Type.Combinators (All, Append, IIndex, Remove)
 
 -- | A type of duplex channel, producing values of type @o@ and
 -- awaiting values of type @i@ in response.
@@ -259,11 +256,16 @@ pullProxy fwd bwd = loop
 -- | Iterate over specified duplex channel, replacing calls to
 -- 'requestOn' with the loop body.
 forOnDuplex ::
-     (Monad m, All Functor cs, All Functor cs', Known Length (Remove n cs))
+     ( Monad m
+     , All Functor cs
+     , All Functor cs'
+     , Remove n cs ocs
+     , Append ocs cs' rescs
+     )
   => IIndex n cs (Request a b) -- ^ Index of the channel.
   -> Node cs m r
   -> (a -> Node cs' m b) -- ^ Replacement for 'requestOn'.
-  -> Node (Remove n cs ++ cs') m r
+  -> Node rescs m r
 forOnDuplex n node f = forsOn n node body
   where
     body (Compose (a, fb)) = fmap fb (f a)
