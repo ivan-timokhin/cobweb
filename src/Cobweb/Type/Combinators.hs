@@ -348,54 +348,54 @@ fdecompIdx ::
   => IIndex n fs f -- ^ An index of an element to be extracted
   -> FSum fs a
   -> Either (FSum gs a) (f a)
-{-# NOINLINE fdecompIdx #-}
-fdecompIdx = loop removeW
-  where
-    loop ::
-         RemoveW n fs gs
-      -> IIndex n fs f
-      -> FSum fs a
-      -> Either (FSum gs a) (f a)
-    loop RemZ IIZ (FInL x) = Right x
-    loop RemZ IIZ (FInR x) = Left x
-    loop (RemS _) (IIS _) (FInL x) = Left (FInL x)
-    loop (RemS r) (IIS n) (FInR x) = first FInR (loop r n x)
+{-# INLINE fdecompIdx #-}
+fdecompIdx = fdecompIdx_W removeW
+
+fdecompIdx_W ::
+     RemoveW n fs gs
+  -> IIndex n fs f
+  -> FSum fs a
+  -> Either (FSum gs a) (f a)
+{-# NOINLINE[0] fdecompIdx_W #-}
+fdecompIdx_W RemZ IIZ (FInL x) = Right x
+fdecompIdx_W RemZ IIZ (FInR x) = Left x
+fdecompIdx_W (RemS _) (IIS _) (FInL x) = Left (FInL x)
+fdecompIdx_W (RemS r) (IIS n) (FInR x) = first FInR (fdecompIdx_W r n x)
 
 {-# RULES
-"fdecompIdx/1" fdecompIdx = decomp1
-"fdecompIdx/2" fdecompIdx = decomp2
+"fdecompIdx_W/0" fdecompIdx_W = decompIdx_0
+"fdecompIdx_W/1" fdecompIdx_W = decompIdx_1
+"fdecompIdx_W/2" fdecompIdx_W = decompIdx_2
  #-}
 
-decomp1 ::
-     Remove n '[ f0] gs
-  => IIndex n '[ f0] f
+decompIdx_0 ::
+     RemoveW n '[] gs
+  -> IIndex n '[] f
+  -> FSum '[] a
+  -> Either (FSum gs a) (f a)
+{-# INLINE decompIdx_0 #-}
+decompIdx_0 _ _ = absurdFSum
+
+decompIdx_1 ::
+     RemoveW n '[ f0] gs
+  -> IIndex n '[ f0] f
   -> FSum '[ f0] a
   -> Either (FSum gs a) (f a)
-{-# INLINE decomp1 #-}
-decomp1 IIZ (FInL x) = Right x
-decomp1 IIZ (FInR x) = absurdFSum x
-decomp1 (IIS n) _ = case n of {}
+{-# INLINE decompIdx_1 #-}
+decompIdx_1 RemZ IIZ (FInL x) = Right x
+decompIdx_1 RemZ IIZ (FInR x) = absurdFSum x
+decompIdx_1 (RemS r) (IIS _) _ = case r of {}
 
-decomp2 ::
-  forall n f0 f1 f gs a.
-     Remove n '[ f0, f1] gs
-  => IIndex n '[ f0, f1] f
+decompIdx_2 ::
+     RemoveW n '[ f0, f1] gs
+  -> IIndex n '[ f0, f1] f
   -> FSum '[ f0, f1] a
   -> Either (FSum gs a) (f a)
-{-# INLINE decomp2 #-}
-decomp2 = switch removeW
-  where
-    switch ::
-         RemoveW n '[ f0, f1] gs
-      -> IIndex n '[ f0, f1] f
-      -> FSum '[ f0, f1] a
-      -> Either (FSum gs a) (f a)
-    switch RemZ IIZ (FInL x) = Right x
-    switch RemZ IIZ (FInR x) = Left x
-    switch (RemS _) (IIS _) (FInL x) = Left (FInL x)
-    switch (RemS RemZ) (IIS IIZ) (FInR (FInL x)) = Right x
-    switch (RemS RemZ) (IIS IIZ) (FInR (FInR x)) = absurdFSum x
-    switch (RemS (RemS r)) _ _ = case r of {}
+{-# INLINE decompIdx_2 #-}
+decompIdx_2 RemZ IIZ (FInL x) = Right x
+decompIdx_2 RemZ IIZ (FInR x) = Left x
+decompIdx_2 (RemS _) (IIS _) (FInL x) = Left (FInL x)
+decompIdx_2 (RemS r) (IIS n) (FInR x) = first FInR (decompIdx_1 r n x)
 
 -- | Decompose the sum like 'fdecompIdx', but instead of the sum
 -- /without/ the requested element, return the sum with the requested
