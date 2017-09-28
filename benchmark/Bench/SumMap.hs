@@ -3,7 +3,6 @@ module Bench.SumMap
   ) where
 
 import qualified Cobweb as W
-import qualified Cobweb.Link as W
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as C
 import qualified Data.Machine as M
@@ -31,8 +30,7 @@ benchSumMap n =
 sumMapW :: Int -> Int
 {-# NOINLINE sumMapW #-}
 sumMapW n =
-  runIdentity $
-  W.foldNode_ (+) 0 id $ W.linkOn W.i0 W.i0 (W.each [1 .. n]) (W.mapping (+ 2))
+  runIdentity $ W.foldNode_ (+) 0 id $ W.each [1 .. n] W.>-> W.mapping (+ 2)
 
 sumMapC :: Int -> Int
 {-# NOINLINE sumMapC #-}

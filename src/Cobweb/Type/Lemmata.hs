@@ -38,8 +38,22 @@ import Type.Family.List (Null)
 -- | If it is possible to remove an element from the list, the list
 -- cannot be empty.
 removeNonEmpty :: forall n as bs. RemoveW n as bs -> Wit (Null as ~ 'False)
+{-# NOINLINE[0] removeNonEmpty #-}
 removeNonEmpty RemZ = Wit
 removeNonEmpty (RemS r) = Wit \\ removeNonEmpty r
+
+{-# RULES
+"removeNonEmpty 1" removeNonEmpty = remNE1
+"removeNonEmpty 2" removeNonEmpty = remNE2
+ #-}
+
+remNE1 :: RemoveW n '[a] bs -> Wit (Null '[a] ~ 'False)
+{-# INLINE remNE1 #-}
+remNE1 _ = Wit
+
+remNE2 :: RemoveW n '[a0, a1] bs -> Wit (Null '[a0, a1] ~ 'False)
+{-# INLINE remNE2 #-}
+remNE2 _ = Wit
 
 -- | If all elements of @as@ and all elements of @bs@ satisfy some
 -- constraint, then so do all elements in @as 'Type.Family.List.++' bs@.
@@ -61,11 +75,25 @@ removeRetainsLength ::
      forall n as bs. (Known Length as)
   => RemoveW n as bs
   -> Wit (Known Length bs)
+{-# NOINLINE[0] removeRetainsLength #-}
 removeRetainsLength = loop (known :: Length as)
   where
     loop :: Length as' -> RemoveW n' as' bs' -> Wit (Known Length bs')
     loop l RemZ = Wit \\ l
     loop (LS l) (RemS r) = Wit \\ loop l r
+
+{-# RULES
+"removeRetainsLength 0" removeRetainsLength = remRetL0
+"removeRetainsLength 1" removeRetainsLength = remRetL1
+ #-}
+
+remRetL0 :: RemoveW n as '[] -> Wit (Known Length '[])
+{-# INLINE remRetL0 #-}
+remRetL0 _ = Wit
+
+remRetL1 :: RemoveW n as '[a] -> Wit (Known Length '[a])
+{-# INLINE remRetL1 #-}
+remRetL1 _ = Wit
 
 -- | If all of the elements of the list satisfy some constraint, and
 -- one element is removed, remaining elements still satisfy that
