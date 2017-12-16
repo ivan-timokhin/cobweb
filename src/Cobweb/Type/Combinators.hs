@@ -71,14 +71,28 @@ module Cobweb.Type.Combinators
   ) where
 
 import Data.Bifunctor (first)
-import Data.Type.Equality ((:~:), type (==))
+import Data.Type.Equality ((:~:)(Refl), type (==))
 import Data.Type.Index (Index(IS, IZ))
 import Data.Type.Length (Length(LS, LZ))
 import Type.Class.Known (Known(known))
 import Type.Class.Witness (Witness((\\)))
 import Type.Family.List (type (<$>), Last, ListC, Null)
 import Type.Family.Nat
-       (Len, N(S, Z), N0, N1, N10, N2, N3, N4, N5, N6, N7, N8, N9, Pred)
+  ( Len
+  , N(S, Z)
+  , N0
+  , N1
+  , N10
+  , N2
+  , N3
+  , N4
+  , N5
+  , N6
+  , N7
+  , N8
+  , N9
+  , Pred
+  )
 
 -- | A sum of a list of functors.
 data FSum (fs :: [k -> *]) (a :: k) where
@@ -361,6 +375,140 @@ instance Append as bs cs => Append (a : as) bs (a : cs) where
 instance Witness () (Append as bs cs) (AppendW as bs cs) where
   x \\ AppZ = x
   x \\ AppS a = x \\ a
+
+class Inductive (fs :: [* -> *]) where
+  mapI :: All Functor fs => (a -> b) -> FSum fs a -> FSum fs b
+  lastIdxI ::
+       Length fs -> Either (fs :~: '[]) (IIndex (Pred (Len fs)) fs (Last fs))
+  replaceIdxI :: ReplaceW n fs g gs -> IIndex n gs g
+  decompIdxI ::
+       RemoveW n fs gs -> IIndex n fs f -> FSum fs a -> Either (FSum gs a) (f a)
+  decompReplaceIdxI ::
+       ReplaceW n fs g gs
+    -> IIndex n fs f
+    -> FSum fs a
+    -> Either (FSum gs a) (f a)
+  replaceTermI ::
+       ReplaceW n fs g gs
+    -> IIndex n fs f
+    -> (f a -> g a)
+    -> FSum fs a
+    -> FSum gs a
+  injectTerm :: IIndex n fs f -> f a -> FSum fs a
+  inlI :: AppendW fs gs hs -> FSum fs a -> FSum hs a
+  inrI :: AppendW fs gs hs -> FSum gs a -> FSum hs a
+  fuseSumI ::
+       (n == m) ~ 'False
+    => RemoveW n fs fs'
+    -> IIndex n fs f
+    -> IIndex m fs f
+    -> FSum fs a
+    -> FSum fs' a
+  injectReplaced :: ReplaceW i fs g fs' -> g a -> FSum fs' a
+  fuseSumWithI ::
+       (n == m) ~ 'False
+    => (f a -> h a)
+    -> (g a -> h a)
+    -> RemoveW n fsrep res
+    -> IIndex n fs f
+    -> ReplaceW m fs h fsrep
+    -> IIndex m fs g
+    -> FSum fs a
+    -> FSum res a
+  fuseSumAllI :: All (Known ((:~:) f)) fs => FSum fs a -> f a
+
+instance Inductive '[] where
+  mapI _ = absurdFSum
+  {-# INLINE mapI #-}
+  lastIdxI _ = Left Refl
+  {-# INLINE lastIdxI #-}
+  replaceIdxI = absurdReplace
+  {-# INLINE replaceIdxI #-}
+  decompIdxI = absurdRemove
+  {-# INLINE decompIdxI #-}
+  decompReplaceIdxI = absurdReplace
+  {-# INLINE decompReplaceIdxI #-}
+  replaceTermI = absurdReplace
+  {-# INLINE replaceTermI #-}
+  injectTerm = absurdIdx
+  {-# INLINE injectTerm #-}
+  inlI _ = absurdFSum
+  {-# INLINE inlI #-}
+  inrI AppZ = id
+  {-# INLINE inrI #-}
+  fuseSumI _ _ _ = absurdFSum
+  {-# INLINE fuseSumI #-}
+  injectReplaced = absurdReplace
+  {-# INLINE injectReplaced #-}
+  fuseSumWithI _ _ _ _ _ _ = absurdFSum
+  {-# INLINE fuseSumWithI #-}
+  fuseSumAllI = absurdFSum
+  {-# INLINE fuseSumAllI #-}
+
+instance Inductive fs => Inductive (f : fs) where
+  mapI f (FInL x) = FInL (fmap f x)
+  mapI f (FInR x) = FInR (mapI f x)
+  {-# INLINE mapI #-}
+  lastIdxI (LS LZ) = Right IIZ
+  lastIdxI (LS l@(LS _)) =
+    case lastIdxI l of
+      Right i -> Right (IIS i)
+      Left r -> case r of {}
+  {-# INLINE lastIdxI #-}
+  replaceIdxI RepZ = IIZ
+  replaceIdxI (RepS r) = IIS (replaceIdxI r)
+  {-# INLINE replaceIdxI #-}
+  decompIdxI RemZ IIZ (FInL x) = Right x
+  decompIdxI RemZ IIZ (FInR x) = Left x
+  decompIdxI (RemS _) (IIS _) (FInL x) = Left (FInL x)
+  decompIdxI (RemS r) (IIS i) (FInR x) = first FInR (decompIdxI r i x)
+  {-# INLINE decompIdxI #-}
+  decompReplaceIdxI RepZ IIZ (FInL x) = Right x
+  decompReplaceIdxI RepZ IIZ (FInR x) = Left (FInR x)
+  decompReplaceIdxI (RepS _) (IIS _) (FInL x) = Left (FInL x)
+  decompReplaceIdxI (RepS r) (IIS i) (FInR x) =
+    first FInR (decompReplaceIdxI r i x)
+  {-# INLINE decompReplaceIdxI #-}
+  replaceTermI RepZ IIZ f (FInL x) = FInL (f x)
+  replaceTermI RepZ IIZ _ (FInR x) = FInR x
+  replaceTermI (RepS _) (IIS _) _ (FInL x) = FInL x
+  replaceTermI (RepS r) (IIS i) f (FInR x) = FInR (replaceTermI r i f x)
+  {-# INLINE replaceTermI #-}
+  injectTerm IIZ = FInL
+  injectTerm (IIS i) = FInR . injectTerm i
+  {-# INLINE injectTerm #-}
+  inlI (AppS _) (FInL x) = FInL x
+  inlI (AppS a) (FInR x) = FInR (inlI a x)
+  {-# INLINE inlI #-}
+  inrI (AppS a) = FInR . inrI a
+  {-# INLINE inrI #-}
+  fuseSumI RemZ IIZ (IIS m) (FInL x) = injectTerm m x
+  fuseSumI RemZ IIZ (IIS _) (FInR x) = x
+  fuseSumI r@(RemS _) n@(IIS _) IIZ fsum =
+    case decompIdxI r n fsum of
+      Right x -> FInL x
+      Left x -> x
+  fuseSumI (RemS _) (IIS _) (IIS _) (FInL x) = FInL x
+  fuseSumI (RemS r) (IIS n) (IIS m) (FInR x) = FInR (fuseSumI r n m x)
+  {-# INLINE fuseSumI #-}
+  injectReplaced RepZ = FInL
+  injectReplaced (RepS r) = FInR . injectReplaced r
+  {-# INLINE injectReplaced #-}
+  fuseSumWithI f _ RemZ IIZ (RepS rep) (IIS _) (FInL x) =
+    injectReplaced rep (f x)
+  fuseSumWithI _ g RemZ IIZ (RepS rep) (IIS m) (FInR x) = replaceTermI rep m g x
+  fuseSumWithI _ g (RemS _) (IIS _) RepZ IIZ (FInL x) = FInL (g x)
+  fuseSumWithI f _ (RemS r) (IIS n) RepZ IIZ (FInR s) =
+    case decompIdxI r n s of
+      Right x -> FInL (f x)
+      Left x -> FInR x
+  fuseSumWithI _ _ (RemS _) (IIS _) (RepS _) (IIS _) (FInL x) = FInL x
+  fuseSumWithI f g (RemS r) (IIS n) (RepS rep) (IIS m) (FInR x) =
+    FInR (fuseSumWithI f g r n rep m x)
+  {-# INLINE fuseSumWithI #-}
+  fuseSumAllI (FInL x) = idEq x
+  fuseSumAllI (FInR x) = fuseSumAllI x
+  {-# INLINE fuseSumAllI #-}
 
 -- | Produce an index of a replaced element in the new list.
 replaceIdx ::
