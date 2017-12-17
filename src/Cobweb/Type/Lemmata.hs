@@ -21,17 +21,20 @@ A collection of lemmata used to simplify constraints.
 module Cobweb.Type.Lemmata
   ( removeNonEmpty
   , appendAll
-  , removeRetainsLength
   , iwithoutRetainsAll
   , ireplacedRetainsAll
   ) where
 
 import Cobweb.Type.Combinators
-       (All, Append(appendW), AppendW(AppS, AppZ), IIndex(IIS, IIZ),
-        Remove(removeW), RemoveW(RemS, RemZ), Replace(replaceW),
-        ReplaceW(RepS, RepZ), Inductive)
-import Data.Type.Length (Length(LS))
-import Type.Class.Known (Known(known))
+  ( All
+  , Append(appendW)
+  , AppendW(AppS, AppZ)
+  , IIndex(IIS, IIZ)
+  , Remove(removeW)
+  , RemoveW(RemS, RemZ)
+  , Replace(replaceW)
+  , ReplaceW(RepS, RepZ)
+  )
 import Type.Class.Witness (Wit(Wit), Witness((\\)))
 import Type.Family.List (Null)
 
@@ -64,62 +67,6 @@ appendAll _ _ _ = loop (appendW :: AppendW as bs cs)
     loop :: (All f as', All f bs') => AppendW as' bs' cs' -> Wit (All f cs')
     loop AppZ = Wit
     loop (AppS a) = Wit \\ loop a
-
--- | Removing an element from the list retains the knowledge of list's
--- length.
-removeRetainsLength ::
-     forall n as bs. (Known Length as)
-  => RemoveW n as bs
-  -> Wit (Known Length bs)
-{-# NOINLINE[0] removeRetainsLength #-}
-removeRetainsLength = loop (known :: Length as)
-  where
-    loop :: Length as' -> RemoveW n' as' bs' -> Wit (Known Length bs')
-    loop l RemZ = Wit \\ l
-    loop (LS l) (RemS r) = Wit \\ loop l r
-
-{-# RULES
-"removeRetainsLength 0" removeRetainsLength = remRetL0
-"removeRetainsLength 1" removeRetainsLength = remRetL1
-"removeRetainsLength 2" removeRetainsLength = remRetL2
-"removeRetainsLength 3" removeRetainsLength = remRetL3
-"removeRetainsLength 4" removeRetainsLength = remRetL4
-"removeRetainsLength 5" removeRetainsLength = remRetL5
-"removeRetainsLength 6" removeRetainsLength = remRetL6
- #-}
-
-remRetL0 :: RemoveW n as '[] -> Wit (Known Length '[])
-{-# INLINE remRetL0 #-}
-remRetL0 _ = Wit
-
-remRetL1 :: RemoveW n as '[a] -> Wit (Known Length '[a])
-{-# INLINE remRetL1 #-}
-remRetL1 _ = Wit
-
-remRetL2 :: RemoveW n as '[ a0, a1] -> Wit (Known Length '[ a0, a1])
-{-# INLINE remRetL2 #-}
-remRetL2 _ = Wit
-
-remRetL3 :: RemoveW n as '[ a0, a1, a2] -> Wit (Known Length '[ a0, a1, a2])
-{-# INLINE remRetL3 #-}
-remRetL3 _ = Wit
-
-remRetL4 ::
-     RemoveW n as '[ a0, a1, a2, a3] -> Wit (Known Length '[ a0, a1, a2, a3])
-{-# INLINE remRetL4 #-}
-remRetL4 _ = Wit
-
-remRetL5 ::
-     RemoveW n as '[ a0, a1, a2, a3, a4]
-  -> Wit (Known Length '[ a0, a1, a2, a3, a4])
-{-# INLINE remRetL5 #-}
-remRetL5 _ = Wit
-
-remRetL6 ::
-     RemoveW n as '[ a0, a1, a2, a3, a4, a5]
-  -> Wit (Known Length '[ a0, a1, a2, a3, a4, a6])
-{-# INLINE remRetL6 #-}
-remRetL6 _ = Wit
 
 -- | If all of the elements of the list satisfy some constraint, and
 -- one element is removed, remaining elements still satisfy that

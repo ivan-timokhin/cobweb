@@ -49,8 +49,6 @@ module Cobweb.Link
 import Data.Functor.Compose (Compose(getCompose))
 import Data.Functor.Identity (Identity(Identity, runIdentity))
 import Data.Proxy (Proxy(Proxy))
-import Data.Type.Length (Length)
-import Type.Class.Known (Known)
 import Type.Class.Witness (Witness((\\)))
 import Type.Family.List (Last, Null)
 import Type.Family.Nat (Len, Pred)
@@ -61,7 +59,7 @@ import Cobweb.Internal (Node(Connect, Effect, Return))
 import Cobweb.Type.Combinators
        (All, Append, FSum, IIndex, Remove, RemoveW, fdecompIdx, finl,
         finr, i0, lastIndex, removeW)
-import Cobweb.Type.Lemmata (removeNonEmpty, removeRetainsLength)
+import Cobweb.Type.Lemmata (removeNonEmpty)
 
 -- The functional dependency on Annihilate is very annoying, but in
 -- its absence GHC can't even figure out that @Awaiting a@ and
@@ -191,8 +189,7 @@ instance (Annihilate f1 g1, Annihilate f2 g2) =>
 -- first group of types, and this generality should not be abused.
 (>->) ::
      forall lcs lcs' r rcs' rescs m a.
-     ( Known Length lcs
-     , Remove (Pred (Len lcs)) lcs lcs'
+     ( Remove (Pred (Len lcs)) lcs lcs'
      , All Functor lcs'
      , All Functor rcs'
      , Annihilate r (Last lcs)
@@ -203,7 +200,7 @@ instance (Annihilate f1 g1, Annihilate f2 g2) =>
   -> Node (r : rcs') m a -- ^ ‘Downstream’ node.
   -> Node rescs m a
 {-# INLINE (>->) #-}
-(>->) = linkPipe_ \\ removeRetainsLength lrem \\ removeNonEmpty lrem
+(>->) = linkPipe_ \\ removeNonEmpty lrem
   where
     lrem :: RemoveW (Pred (Len lcs)) lcs lcs'
     lrem = removeW
@@ -211,8 +208,7 @@ instance (Annihilate f1 g1, Annihilate f2 g2) =>
 infixl 8 >->
 
 linkPipe_ ::
-     ( Known Length lcs
-     , Remove (Pred (Len lcs)) lcs lcs'
+     ( Remove (Pred (Len lcs)) lcs lcs'
      , Null lcs ~ 'False
      , All Functor lcs'
      , All Functor rcs'
@@ -262,7 +258,6 @@ linkPipe_ = linkOn lastIndex i0
 (|->) ::
      ( All Functor lcs
      , All Functor rcs
-     , Known Length rcs
      , Annihilate r l
      , Append rcs lcs rescs
      , Functor m
@@ -303,9 +298,7 @@ infixl 7 |->
 -- @
 (>-|) ::
      forall lcs rcs lcs' rcs' rescs m a.
-     ( Known Length lcs
-     , Known Length rcs
-     , Remove (Pred (Len lcs)) lcs lcs'
+     ( Remove (Pred (Len lcs)) lcs lcs'
      , Remove (Pred (Len rcs)) rcs rcs'
      , All Functor lcs'
      , All Functor rcs'
@@ -317,10 +310,7 @@ infixl 7 |->
   -> Node rcs m a -- ^ ‘Consumer’.
   -> Node rescs m a
 {-# INLINE (>-|) #-}
-(>-|) =
-  linkConsumer_ \\ removeRetainsLength lrem \\ removeNonEmpty lrem \\
-  removeRetainsLength rrem \\
-  removeNonEmpty rrem
+(>-|) = linkConsumer_ \\ removeNonEmpty lrem \\ removeNonEmpty rrem
   where
     lrem :: RemoveW (Pred (Len lcs)) lcs lcs'
     lrem = removeW
@@ -334,10 +324,6 @@ linkConsumer_ ::
      , Null rcs ~ 'False
      , Remove (Pred (Len lcs)) lcs lcs'
      , Remove (Pred (Len rcs)) rcs rcs'
-     -- , Known Length lcs'
-     -- , Known Length rcs'
-     , Known Length lcs
-     , Known Length rcs
      , Annihilate (Last rcs) (Last lcs)
      , All Functor lcs'
      , All Functor rcs'
@@ -459,8 +445,7 @@ linkOn' n k =
 -- @
 (+>>) ::
      forall lcs lcs' lreq lresp rcs' rreq rresp rescs m a.
-     ( Known Length lcs
-     , Remove (Pred (Len lcs)) lcs lcs'
+     ( Remove (Pred (Len lcs)) lcs lcs'
      , All Functor lcs'
      , All Functor rcs'
      , Last lcs ~ Compose lresp lreq
@@ -474,7 +459,7 @@ linkOn' n k =
                                           -- node.
   -> Node rescs m a
 {-# INLINE (+>>) #-}
-(+>>) = linkDuplexPullPipe_ \\ removeRetainsLength lrem \\ removeNonEmpty lrem
+(+>>) = linkDuplexPullPipe_ \\ removeNonEmpty lrem
   where
     lrem :: RemoveW (Pred (Len lcs)) lcs lcs'
     lrem = removeW
@@ -501,8 +486,7 @@ infixr 5 +>>
 --   -> (c' -> 'Cobweb.Duplex.Proxy' a' a c' c m r)
 -- @
 (>+>) ::
-     ( Known Length lcs
-     , Remove (Pred (Len lcs)) lcs lcs'
+     ( Remove (Pred (Len lcs)) lcs lcs'
      , All Functor lcs'
      , All Functor rcs'
      , Last lcs ~ Compose lresp lreq
@@ -526,8 +510,6 @@ linkDuplexPullPipe_ ::
      , All Functor lcs'
      , All Functor rcs'
      , Null lcs ~ 'False
-     , Known Length lcs
-     , Known Length lcs'
      , Last lcs ~ Compose lresp lreq
      , Annihilate lreq rresp
      , Annihilate rreq lresp
@@ -573,8 +555,7 @@ linkDuplexPullPipe_ = linkOnDuplex lastIndex i0
 -- @
 (>>~) ::
      forall lcs lreq lresp lcs' rcs' rreq rresp rescs m a.
-     ( Known Length lcs
-     , Remove (Pred (Len lcs)) lcs lcs'
+     ( Remove (Pred (Len lcs)) lcs lcs'
      , All Functor lcs'
      , All Functor rcs'
      , Last lcs ~ Compose lresp lreq
@@ -588,7 +569,7 @@ linkDuplexPullPipe_ = linkOnDuplex lastIndex i0
      -- ‘server’ node.
   -> Node rescs m a
 {-# INLINE (>>~) #-}
-(>>~) = linkDuplexPushPipe_ \\ removeRetainsLength lrem \\ removeNonEmpty lrem
+(>>~) = linkDuplexPushPipe_ \\ removeNonEmpty lrem
   where
     lrem :: RemoveW (Pred (Len lcs)) lcs lcs'
     lrem = removeW
@@ -615,8 +596,7 @@ infixl 5 >>~
 --   -> (a -> 'Cobweb.Duplex.Proxy' a' a c' c m r)
 -- @
 (>~>) ::
-     ( Known Length lcs
-     , Remove (Pred (Len lcs)) lcs lcs'
+     ( Remove (Pred (Len lcs)) lcs lcs'
      , All Functor lcs'
      , All Functor rcs'
      , Functor lreq'
@@ -640,7 +620,6 @@ linkDuplexPushPipe_ ::
      , All Functor lcs'
      , All Functor rcs'
      , Null lcs ~ 'False
-     , Known Length lcs
      , Last lcs ~ Compose lresp lreq
      , Annihilate lreq rresp
      , Annihilate rreq lresp
@@ -673,9 +652,7 @@ infixl 4 |>~
 -- | @('+>|')@ is to @('+>>')@ what @('>-|')@ is to @('>->')@.
 (+>|) ::
      forall lcs lcs' rcs rcs' rescs lreq lresp rresp rreq m a.
-     ( Known Length lcs
-     , Known Length rcs
-     , Remove (Pred (Len lcs)) lcs lcs'
+     ( Remove (Pred (Len lcs)) lcs lcs'
      , Remove (Pred (Len rcs)) rcs rcs'
      , All Functor lcs'
      , All Functor rcs'
@@ -700,9 +677,7 @@ infixl 4 |>~
 infixr 4 +>|
 
 linkConsumerDuplex_ ::
-     ( Known Length lcs
-     , Known Length rcs
-     , Remove (Pred (Len rcs)) rcs rcs'
+     ( Remove (Pred (Len rcs)) rcs rcs'
      , Remove (Pred (Len lcs)) lcs lcs'
      , All Functor lcs'
      , All Functor rcs'
