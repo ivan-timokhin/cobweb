@@ -52,7 +52,7 @@ import Data.Functor.Compose (Compose(Compose))
 
 import Cobweb.Core
        (Awaiting, Leaf, Node, Tube, Yielding, connectsOn, forsOn, i0, i1)
-import Cobweb.Type.Combinators (All, Append, IIndex, Remove)
+import Cobweb.Type.Combinators (Inductive, All, Append, IIndex, Remove)
 
 -- | A type of duplex channel, producing values of type @o@ and
 -- awaiting values of type @i@ in response.
@@ -73,7 +73,7 @@ type Client a b = Leaf (Request a b)
 type Proxy a' a b' b = Tube (Request a' a) (Request b b')
 
 -- | Send a request on the channel with a specified index.
-requestOn :: IIndex n cs (Request a b) -> a -> Node cs m b
+requestOn :: Inductive cs => IIndex n cs (Request a b) -> a -> Node cs m b
 requestOn n x = connectsOn n (Compose (x, id))
 
 -- | Use the provided function to serve incoming requests.

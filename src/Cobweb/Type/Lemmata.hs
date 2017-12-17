@@ -29,7 +29,7 @@ module Cobweb.Type.Lemmata
 import Cobweb.Type.Combinators
        (All, Append(appendW), AppendW(AppS, AppZ), IIndex(IIS, IIZ),
         Remove(removeW), RemoveW(RemS, RemZ), Replace(replaceW),
-        ReplaceW(RepS, RepZ))
+        ReplaceW(RepS, RepZ), Inductive)
 import Data.Type.Length (Length(LS))
 import Type.Class.Known (Known(known))
 import Type.Class.Witness (Wit(Wit), Witness((\\)))
@@ -64,70 +64,6 @@ appendAll _ _ _ = loop (appendW :: AppendW as bs cs)
     loop :: (All f as', All f bs') => AppendW as' bs' cs' -> Wit (All f cs')
     loop AppZ = Wit
     loop (AppS a) = Wit \\ loop a
-
-{-# RULES
-"appendAll 0" appendAll = appendAll0
-"appendAll 1" appendAll = appendAll1
-"appendAll 2" appendAll = appendAll2
-"appendAll 3" appendAll = appendAll3
-"appendAll 4" appendAll = appendAll4
-"appendAll 5" appendAll = appendAll5
-"appendAll 6" appendAll = appendAll6
- #-}
-
-appendAll0 :: All f bs => p1 f -> p2 '[] -> p3 bs -> Wit (All f bs)
-{-# INLINE appendAll0 #-}
-appendAll0 _ _ _ = Wit
-
-appendAll1 ::
-     (f a0, All f bs) => p1 f -> p2 '[ a0] -> p3 bs -> Wit (All f (a0 : bs))
-{-# INLINE appendAll1 #-}
-appendAll1 _ _ _ = Wit
-
-appendAll2 ::
-     (f a0, f a1, All f bs)
-  => p1 f
-  -> p2 '[ a0, a1]
-  -> p3 bs
-  -> Wit (All f (a0 : a1 : bs))
-{-# INLINE appendAll2 #-}
-appendAll2 _ _ _ = Wit
-
-appendAll3 ::
-     (f a0, f a1, f a2, All f bs)
-  => p1 f
-  -> p2 '[ a0, a1, a2]
-  -> p3 bs
-  -> Wit (All f (a0 : a1 : a2 : bs))
-{-# INLINE appendAll3 #-}
-appendAll3 _ _ _ = Wit
-
-appendAll4 ::
-     (f a0, f a1, f a2, f a3, All f bs)
-  => p1 f
-  -> p2 '[ a0, a1, a2, a3]
-  -> p3 bs
-  -> Wit (All f (a0 : a1 : a2 : a3 : bs))
-{-# INLINE appendAll4 #-}
-appendAll4 _ _ _ = Wit
-
-appendAll5 ::
-     (f a0, f a1, f a2, f a3, f a4, All f bs)
-  => p1 f
-  -> p2 '[ a0, a1, a2, a3, a4]
-  -> p3 bs
-  -> Wit (All f (a0 : a1 : a2 : a3 : a4 : bs))
-{-# INLINE appendAll5 #-}
-appendAll5 _ _ _ = Wit
-
-appendAll6 ::
-     (f a0, f a1, f a2, f a3, f a4, f a5, All f bs)
-  => p1 f
-  -> p2 '[ a0, a1, a2, a3, a4, a5]
-  -> p3 bs
-  -> Wit (All f (a0 : a1 : a2 : a3 : a4 : a5 : bs))
-{-# INLINE appendAll6 #-}
-appendAll6 _ _ _ = Wit
 
 -- | Removing an element from the list retains the knowledge of list's
 -- length.

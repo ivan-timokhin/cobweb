@@ -36,8 +36,6 @@ import Prelude hiding (span, splitAt)
 
 import Control.Monad (forever)
 import Control.Monad.Trans (lift)
-import Data.Type.Length (Length)
-import Type.Class.Known (Known)
 import Type.Family.List (Last, Null)
 
 import Cobweb.Core
@@ -45,7 +43,7 @@ import Cobweb.Core
         yieldOn)
 import Cobweb.Internal (Node(Connect, Effect, Return))
 import Cobweb.Type.Combinators
-       (All, IIndex, fsumOnly, i0, lastIndex)
+       (Inductive, All, IIndex, fsumOnly, i0, lastIndex)
 
 -- | Produce a value on the last channel of a 'Node'.
 --
@@ -68,7 +66,7 @@ import Cobweb.Type.Combinators
 --
 --    [@'Null' cs ~ ''False'@] The channel list should not be empty.
 yield ::
-     (Known Length cs, Last cs ~ Yielding a, Null cs ~ 'False)
+     (Inductive cs, Last cs ~ Yielding a, Null cs ~ 'False)
   => a
   -> Node cs m ()
 yield = yieldOn lastIndex
@@ -92,7 +90,7 @@ mapP = mapOn i0
 
 -- | Loop over a producer.
 for ::
-     (All Functor cs, Functor m)
+     (All Functor cs, Inductive cs, Functor m)
   => Producer a m r -- ^ Source of values.
   -> (a -> Node cs m ()) -- ^ Loop body.
   -> Node cs m r
@@ -129,7 +127,7 @@ next = inspectLeaf
 --    -> 'Node' (c0 : c1 : 'Yielding' a : cs) m r
 -- @
 produceOn ::
-     Functor m
+     (Functor m, Inductive cs)
   => IIndex n cs (Yielding a) -- ^ A channel to attach to.
   -> Producer a m r
   -> Node cs m r

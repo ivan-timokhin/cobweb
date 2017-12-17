@@ -38,7 +38,7 @@ import Cobweb.Core
        (Awaiting, Consumer, Leaf, Node, awaitOn, i0, inspectLeaf, leafOn,
         preforOn, premapOn)
 import Cobweb.Internal (Node(Connect, Effect, Return))
-import Cobweb.Type.Combinators (All, IIndex)
+import Cobweb.Type.Combinators (Inductive, All, IIndex)
 
 -- | Produce a value on the first channel of a 'Node'.
 --
@@ -49,7 +49,7 @@ import Cobweb.Type.Combinators (All, IIndex)
 -- 'await' :: 'Consumer' a m a
 -- 'await' :: 'Cobweb.Pipe.Pipe' a b m a
 -- @
-await :: Node (Awaiting a : cs) m a
+await :: Inductive cs => Node (Awaiting a : cs) m a
 {-# NOINLINE await #-}
 await = awaitOn i0
 
@@ -86,7 +86,7 @@ premap = premapOn i0
 -- Each time the consumer 'await's, second argument is run to
 -- determine the value that the consumer will receive.
 prefor ::
-     (All Functor cs, Functor m)
+     (All Functor cs, Inductive cs, Functor m)
   => Consumer a m r -- ^ Consumer of values.
   -> Node cs m a -- ^ Provider of values.
   -> Node cs m r
@@ -122,7 +122,10 @@ nextRequest = inspectLeaf
 --    -> 'Node' (c0 : c1 : 'Awaiting' a : cs) m r
 -- @
 consumeOn ::
-     Functor m => IIndex n cs (Awaiting a) -> Consumer a m r -> Node cs m r
+     (Functor m, Inductive cs)
+  => IIndex n cs (Awaiting a)
+  -> Consumer a m r
+  -> Node cs m r
 consumeOn = leafOn
 
 -- | Split the stream before @(n + 1)@th connection, and return the

@@ -84,7 +84,7 @@ import Cobweb.Internal
        (Node(Connect, Effect, Return), cata, inspect, transformCons,
         unfold)
 import Cobweb.Type.Combinators
-       (All, Append, FSum, IIndex, Remove, Replace, absurdFSum,
+       (Inductive, All, Append, FSum, IIndex, Remove, Replace, absurdFSum,
         fdecompIdx, fdecompReplaceIdx, finjectIdx, finl, finr, freplaceIdx,
         fsumOnly, i0, i1, i10, i2, i3, i4, i5, i6, i7, i8, i9, replaceIdx)
 import Cobweb.Type.Lemmata
@@ -138,7 +138,7 @@ inspectLeaf = fmap (second fsumOnly) . inspect
 --
 -- In practice, it is almost always preferable to use 'connectsOn', or
 -- specialised versions ('yieldOn', 'awaitOn').
-connects :: All Functor cs => FSum cs r -> Node cs m r
+connects :: (All Functor cs, Inductive cs) => FSum cs r -> Node cs m r
 {-# INLINE connects #-}
 connects con = Connect $ fmap Return con
 
@@ -161,7 +161,7 @@ connects con = Connect $ fmap Return con
 -- 'connectsOn' 'i0' :: (a -> r) -> 'Node' '['Awaiting' a, 'Yielding' b, 'Awaiting' c] m r
 -- 'connectsOn' 'i3' :: (a, r) -> 'Node' '[f0, f1, f2, 'Yielding' a, f4] m r
 -- @
-connectsOn :: Functor c => IIndex n cs c -> c r -> Node cs m r
+connectsOn :: (Functor c, Inductive cs) => IIndex n cs c -> c r -> Node cs m r
 {-# INLINE connectsOn #-}
 connectsOn n con = Connect $ finjectIdx n $ fmap Return con
 
@@ -173,7 +173,7 @@ connectsOn n con = Connect $ finjectIdx n $ fmap Return con
 -- 'yieldOn' 'i1' :: a -> 'Node' (c0 : 'Yielding' a : cs) m ()
 -- 'yieldOn' 'i2' :: a -> 'Node' (c0 : c1 : 'Yielding' a : cs) m ()
 -- @
-yieldOn :: IIndex n cs (Yielding a) -> a -> Node cs m ()
+yieldOn :: Inductive cs => IIndex n cs (Yielding a) -> a -> Node cs m ()
 {-# INLINE yieldOn #-}
 yieldOn n a = connectsOn n (a, ())
 
@@ -181,7 +181,7 @@ yieldOn n a = connectsOn n (a, ())
 --
 -- __See also__: 'yieldOn'
 eachOn ::
-     (Functor m, All Functor cs, Foldable f)
+     (Functor m, All Functor cs, Inductive cs, Foldable f)
   => IIndex n cs (Yielding a)
   -> f a
   -> Node cs m ()
@@ -196,7 +196,7 @@ eachOn n = traverse_ (yieldOn n)
 -- 'awaitOn' 'i1' :: 'Node' (c0 : 'Awaiting' a : cs) m a
 -- 'awaitOn' 'i2' :: 'Node' (c0 : c1 : 'Awaiting' a : cs) m a
 -- @
-awaitOn :: IIndex n cs (Awaiting a) -> Node cs m a
+awaitOn :: Inductive cs => IIndex n cs (Awaiting a) -> Node cs m a
 {-# INLINE awaitOn #-}
 awaitOn n = connectsOn n id
 
@@ -210,13 +210,17 @@ awaitOn n = connectsOn n id
 -- 'leafOn' 'i1' :: 'Functor' m => 'Leaf' c1 m r -> 'Node' (c0 : c1 : cs) m r
 -- 'leafOn' 'i2' :: 'Functor' m => 'Leaf' c2 m r -> 'Node' (c0 : c1 : c2 : cs) m r
 -- @
-leafOn :: (Functor m, Functor c) => IIndex n cs c -> Leaf c m r -> Node cs m r
+leafOn ::
+     (Functor m, Functor c, Inductive cs)
+  => IIndex n cs c
+  -> Leaf c m r
+  -> Node cs m r
 leafOn n = mapsAll (finjectIdx n . fsumOnly)
 
 -- | Transform entire list of channels of a 'Node' via a natural
 -- transformation of their 'FSum'.
 mapsAll ::
-     (Functor m, All Functor cs)
+     (Functor m, All Functor cs, Inductive cs)
   => (forall x. FSum cs x -> FSum cs' x) -- ^ Convert communications
      -- on old channels into communications on new ones.
   -> Node cs m r -- ^ Node with an old list of channels.
@@ -465,7 +469,7 @@ premapOnM n f = mapsOnM' n (\g -> fmap g . f)
 -- Essentially, @'forsAll' node body@ replaces each call to 'connects'
 -- (as well as specialised variants) with @body@.
 forsAll ::
-     (Functor m, All Functor cs, All Functor cs')
+     (Functor m, All Functor cs, Inductive cs, All Functor cs', Inductive cs')
   => Node cs m r
   -> (forall x. FSum cs x -> Node cs' m x)
   -> Node cs' m r

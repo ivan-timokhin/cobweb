@@ -86,7 +86,7 @@ import Control.Monad.Trans.Resource
 
 import Cobweb.Core (Effect, Node, run)
 import Cobweb.Trans (distribute)
-import Cobweb.Type.Combinators (All)
+import Cobweb.Type.Combinators (Inductive, All)
 
 -- | A convenience function to run both 'Node' and 'ResourceT' in one
 -- go.
@@ -97,13 +97,15 @@ runNodeRes = runResourceT . run
 -- provided computation exits normally; otherwise, it will be cleaned
 -- when outer 'ResourceT' exits.
 region ::
-     (All Functor cs, MonadResource m) => Node cs (ResourceT m) a -> Node cs m a
+     (All Functor cs, Inductive cs, MonadResource m)
+  => Node cs (ResourceT m) a
+  -> Node cs m a
 region = nested . distribute
 
 -- | Same as 'region', but also release resources early if the block
 -- exits via a kind of exception that 'MonadCatch' instance can catch.
 regionC ::
-     (All Functor cs, MonadResource m, MonadCatch m)
+     (All Functor cs, Inductive cs, MonadResource m, MonadCatch m)
   => Node cs (ResourceT m) a
   -> Node cs m a
 regionC = nestedC . distribute
@@ -111,7 +113,7 @@ regionC = nestedC . distribute
 -- | Same as 'region', but also release resources early if the block
 -- exits via 'throwError'.
 regionE ::
-     (All Functor cs, MonadResource m, MonadError e m)
+     (All Functor cs, Inductive cs, MonadResource m, MonadError e m)
   => Node cs (ResourceT m) a
   -> Node cs m a
 regionE = nestedE . distribute
@@ -120,7 +122,12 @@ regionE = nestedE . distribute
 -- exits via exception that can be intercepted via 'MonadCatch' or
 -- 'MonadError' instances.
 regionCE ::
-     (All Functor cs, MonadResource m, MonadCatch m, MonadError e m)
+     ( All Functor cs
+     , Inductive cs
+     , MonadResource m
+     , MonadCatch m
+     , MonadError e m
+     )
   => Node cs (ResourceT m) a
   -> Node cs m a
 regionCE = nestedCE . distribute

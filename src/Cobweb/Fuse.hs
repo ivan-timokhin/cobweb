@@ -51,7 +51,7 @@ import Type.Class.Known (Known)
 import Cobweb.Core (Awaiting, Leaf, Yielding, mapsAll)
 import Cobweb.Internal (Node)
 import Cobweb.Type.Combinators
-       (All, FSum(FInL), IIndex, Remove, Replace, fuseSum, fuseSumAll,
+       (Inductive, All, FSum(FInL), IIndex, Remove, Replace, fuseSum, fuseSumAll,
         fuseSumWith)
 
 -- | Given (different) indices of two identical channels of a 'Node',
@@ -194,7 +194,7 @@ fuseWithPremap f g = fuseWith (. f) (. g)
 -- | Given a 'Node' with /all/ channels identical, fuse them all
 -- together.
 fuseAll ::
-     (All (Known ((:~:) c)) cs, All Functor cs, Functor m)
+     (All (Known ((:~:) c)) cs, All Functor cs, Inductive cs, Functor m)
   => Node cs m r
   -> Leaf c m r
 fuseAll = mapsAll (FInL . fuseSumAll)
