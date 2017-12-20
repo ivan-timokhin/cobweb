@@ -62,8 +62,8 @@ import Cobweb.Type.Combinators
 import Cobweb.Type.Lemmata (removeNonEmpty)
 
 -- The functional dependency on Annihilate is very annoying, but in
--- its absence GHC can't even figure out that @Awaiting a@ and
--- @Yielding b@ pair only if @a ~ b@.  Unfortunately, this
+-- its absence GHC can't even figure out that @Await a@ and
+-- @Yield b@ pair only if @a ~ b@.  Unfortunately, this
 -- significantly complicates adding named channels.
 --
 -- An alternative would be to explicitly demand that the functors are

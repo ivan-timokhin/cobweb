@@ -18,7 +18,7 @@ until it makes a request to the second node, providing it the data
 that it was waiting for, and blocking.  And so on.
 
 Now, while this description is entirely correct for the case of
-'Yielding'/'Awaiting' interface, provided by this module as 'Request',
+'Yield'/'Await' interface, provided by this module as 'Request',
 "Cobweb.Link" in fact allows a more generic duplex interface, with
 arbitrary functors for requests and responses.  Schematically, the
 resulting control flow looks like this:
@@ -51,7 +51,7 @@ import Control.Monad.Trans (lift)
 import Data.Functor.Compose (Compose(Compose))
 
 import Cobweb.Core
-       (Awaiting, Leaf, Node, Tube, Yielding, connectOn, gforOn, i0, i1)
+       (Await, Leaf, Node, Tube, Yield, connectOn, gforOn, i0, i1)
 import Cobweb.Type.Combinators (Inductive, All, Append, IIndex, Remove)
 
 -- | A type of duplex channel, producing values of type @o@ and
@@ -60,7 +60,7 @@ import Cobweb.Type.Combinators (Inductive, All, Append, IIndex, Remove)
 -- Another way to say this, whenever a 'Node' initiates connection on
 -- such channel, it makes a request of the type @o@ and awaits
 -- response of type @i@.
-type Request o i = Yielding o `Compose` Awaiting i
+type Request o i = Yield o `Compose` Await i
 
 -- | A 'Node' with a single duplex channel, that makes requests of
 -- type @a@, awaiting @b@ in response.

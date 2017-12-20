@@ -19,8 +19,8 @@ module Cobweb
   , Effect
   , Tube
   , Leaf
-  , Awaiting
-  , Yielding
+  , Await
+  , Yield
     -- ** Functions
     -- *** Running
   , run
@@ -121,7 +121,7 @@ module Cobweb
   , i10
   ) where
 
-import Cobweb.Consumer (Awaiting, Consumer, await, consumeOn, contrafor, drain)
+import Cobweb.Consumer (Await, Consumer, await, consumeOn, contrafor, drain)
 import Cobweb.Core
   ( Effect
   , Leaf
@@ -164,7 +164,7 @@ import Cobweb.Link (Annihilate(annihilate), (>->), (>-|), (|->))
 import Cobweb.Pipe (Pipe, cat, dropping, mapping, mappingM, taking)
 import Cobweb.Producer
   ( Producer
-  , Yielding
+  , Yield
   , each
   , for
   , generate

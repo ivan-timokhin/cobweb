@@ -176,7 +176,7 @@ foldChunks reducer node =
 -- like
 --
 -- @
--- 'Cobweb.Core.Tube' ('Cobweb.Core.Awaiting' i) ('Cobweb.Pipe.Pipe' i o) m r
+-- 'Cobweb.Core.Tube' ('Cobweb.Core.Await' i) ('Cobweb.Pipe.Pipe' i o) m r
 -- @
 --
 -- But now some of the 'Cobweb.Consumer.await's are ‘hidden’ in the

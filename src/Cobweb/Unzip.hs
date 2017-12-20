@@ -43,14 +43,14 @@ module Cobweb.Unzip
 import Control.Monad (forever)
 
 import Cobweb.Core
-       (Awaiting, Yielding, awaitOn, i0, i1, i2, i3, yieldOn)
+       (Await, Yield, awaitOn, i0, i1, i2, i3, yieldOn)
 import Cobweb.Internal (Node)
 
 -- | Split a stream of values in two with provided function.
 unzippingWith ::
      Functor m
   => (a -> (b, c))
-  -> Node '[ Awaiting a, Yielding b, Yielding c] m r
+  -> Node '[ Await a, Yield b, Yield c] m r
 unzippingWith f =
   forever $ do
     a <- awaitOn i0
@@ -70,14 +70,14 @@ unzippingWith f =
 -- @
 -- 'unzipping' = 'unzippingWith' 'id'
 -- @
-unzipping :: Functor m => Node '[ Awaiting (a, b), Yielding a, Yielding b] m r
+unzipping :: Functor m => Node '[ Await (a, b), Yield a, Yield b] m r
 unzipping = unzippingWith id
 
 -- | Split a stream of values in three with provided function.
 unzippingWith3 ::
      Functor m
   => (a -> (b, c, d))
-  -> Node '[ Awaiting a, Yielding b, Yielding c, Yielding d] m r
+  -> Node '[ Await a, Yield b, Yield c, Yield d] m r
 unzippingWith3 f =
   forever $ do
     a <- awaitOn i0
@@ -93,11 +93,11 @@ unzippingWith3 f =
 -- @
 unzipping3 ::
      Functor m
-  => Node '[ Awaiting (a, b, c), Yielding a, Yielding b, Yielding c] m r
+  => Node '[ Await (a, b, c), Yield a, Yield b, Yield c] m r
 unzipping3 = unzippingWith3 id
 
 -- | Duplicate values of the incoming stream on both outgoing ones.
-tee :: Functor m => Node '[ Awaiting a, Yielding a, Yielding a] m r
+tee :: Functor m => Node '[ Await a, Yield a, Yield a] m r
 tee = unzippingWith (\x -> (x, x))
 
 -- | Split the stream according to the given predicate; values that
@@ -106,7 +106,7 @@ tee = unzippingWith (\x -> (x, x))
 --
 -- A moral equivalent of 'Data.List.partition'.
 partitioning ::
-     Functor m => (a -> Bool) -> Node '[ Awaiting a, Yielding a, Yielding a] m r
+     Functor m => (a -> Bool) -> Node '[ Await a, Yield a, Yield a] m r
 partitioning predicate =
   partitioningWithEither $ \a ->
     if predicate a
@@ -118,7 +118,7 @@ partitioning predicate =
 --
 -- A moral equivalent of 'Data.Either.partitionEithers'.
 partitioningEither ::
-     Functor m => Node '[ Awaiting (Either a b), Yielding a, Yielding b] m r
+     Functor m => Node '[ Await (Either a b), Yield a, Yield b] m r
 partitioningEither = partitioningWithEither id
 
 -- | A variant of 'partitioningEither' that allows converting values
@@ -126,7 +126,7 @@ partitioningEither = partitioningWithEither id
 partitioningWithEither ::
      Functor m
   => (a -> Either b c)
-  -> Node '[ Awaiting a, Yielding b, Yielding c] m r
+  -> Node '[ Await a, Yield b, Yield c] m r
 partitioningWithEither f =
   forever $ do
     a <- awaitOn i0

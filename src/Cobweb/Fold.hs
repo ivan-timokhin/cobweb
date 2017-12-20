@@ -49,7 +49,7 @@ module Cobweb.Fold
 import Control.Monad.Trans (lift)
 import Data.Proxy (Proxy(Proxy))
 
-import Cobweb.Core (Producer, Yielding, yieldOn)
+import Cobweb.Core (Producer, Yield, yieldOn)
 import Cobweb.Internal (Node(Connect, Effect, Return))
 import Cobweb.Type.Combinators
        (All, IIndex, Remove, Replace, fdecompIdx, fdecompReplaceIdx,
@@ -123,7 +123,7 @@ foldMNode_ comb seed fin = fmap fst . foldMNode comb seed fin
 -- the result to the return value.
 foldOn ::
      (Functor m, Remove n cs cs', All Functor cs')
-  => IIndex n cs (Yielding a) -- ^ The index of the channel to fold
+  => IIndex n cs (Yield a) -- ^ The index of the channel to fold
                               -- over.
   -> (x -> a -> x) -- ^ Combining function.
   -> x -- ^ Seed.
@@ -143,7 +143,7 @@ foldOn n comb seed fin = loop seed
 -- | Same as 'foldOn', but discard original return value.
 foldOn_ ::
      (Functor m, Remove n cs cs', All Functor cs')
-  => IIndex n cs (Yielding a)
+  => IIndex n cs (Yield a)
   -> (x -> a -> x)
   -> x
   -> (x -> b)
@@ -158,7 +158,7 @@ foldOn_ n comb seed fin = fmap fst . foldOn n comb seed fin
 -- anything in the 'Node'.
 foldMOn ::
      (Functor m, Remove n cs cs', All Functor cs')
-  => IIndex n cs (Yielding a)
+  => IIndex n cs (Yield a)
   -> (x -> a -> m x)
   -> m x
   -> (x -> m b)
@@ -177,7 +177,7 @@ foldMOn n comb seed fin = \node' -> Effect (fmap (flip loop node') seed)
 -- | Same as 'foldMOn', but discard original return value.
 foldMOn_ ::
      (Functor m, Remove n cs cs', All Functor cs')
-  => IIndex n cs (Yielding a)
+  => IIndex n cs (Yield a)
   -> (x -> a -> m x)
   -> m x
   -> (x -> m b)
@@ -203,29 +203,29 @@ foldMOn_ n comb seed fin = fmap fst . foldMOn n comb seed fin
 --   => (x -> a -> x)
 --   -> x
 --   -> (x -> b)
---   -> 'Node' ('Yielding' a : cs) m r
---   -> 'Node' ('Yielding' b : cs) m r
+--   -> 'Node' ('Yield' a : cs) m r
+--   -> 'Node' ('Yield' b : cs) m r
 --
 -- 'scanOn' 'Cobweb.Core.i1' ::
 --      ('Functor' m, 'Functor' c0, 'All' 'Functor' cs)
 --   => (x -> a -> x)
 --   -> x
 --   -> (x -> b)
---   -> 'Node' (c0 : 'Yielding' a : cs) m r
---   -> 'Node' (c0 : 'Yielding' b : cs) m r
+--   -> 'Node' (c0 : 'Yield' a : cs) m r
+--   -> 'Node' (c0 : 'Yield' b : cs) m r
 --
 -- 'scanOn' 'Cobweb.Core.i2' ::
 --      ('Functor' m, 'Functor' c0, 'Functor' c1, 'All' 'Functor' cs)
 --   => (x -> a -> x)
 --   -> x
 --   -> (x -> b)
---   -> 'Node' (c0 : c1 : 'Yielding' a : cs) m r
---   -> 'Node' (c0 : c1 : 'Yielding' b : cs) m r
+--   -> 'Node' (c0 : c1 : 'Yield' a : cs) m r
+--   -> 'Node' (c0 : c1 : 'Yield' b : cs) m r
 -- @
 scanOn ::
      forall m cs cs' n x a b r.
-     (Functor m, Replace n cs (Yielding b) cs', All Functor cs')
-  => IIndex n cs (Yielding a) -- ^ Index of the channel to scan over.
+     (Functor m, Replace n cs (Yield b) cs', All Functor cs')
+  => IIndex n cs (Yield a) -- ^ Index of the channel to scan over.
   -> (x -> a -> x) -- ^ Combining function.
   -> x -- ^ Seed.
   -> (x -> b) -- ^ Finalise accumulator (evaluated at every step to
@@ -239,7 +239,7 @@ scanOn n comb seed fin = (yieldOn n' (fin seed) >>) . loop seed
     loop !_ (Return r) = Return r
     loop !z (Effect eff) = Effect (fmap (loop z) eff)
     loop !z (Connect con) =
-      case fdecompReplaceIdx n (Proxy :: Proxy (Yielding b)) con of
+      case fdecompReplaceIdx n (Proxy :: Proxy (Yield b)) con of
         Left other -> Connect (fmap (loop z) other)
         Right (a, rest) -> do
           let !z' = comb z a
@@ -259,29 +259,29 @@ scanOn n comb seed fin = (yieldOn n' (fin seed) >>) . loop seed
 --   => (x -> a -> m x)
 --   -> m x
 --   -> (x -> m b)
---   -> 'Node' ('Yielding' a : cs) m r
---   -> 'Node' ('Yielding' b : cs) m r
+--   -> 'Node' ('Yield' a : cs) m r
+--   -> 'Node' ('Yield' b : cs) m r
 --
 -- 'scanOnM' 'Cobweb.Core.i1' ::
 --      ('Monad' m, 'Functor' c0, 'All' 'Functor' cs)
 --   => (x -> a -> m x)
 --   -> m x
 --   -> (x -> m b)
---   -> 'Node' (c0 : 'Yielding' a : cs) m r
---   -> 'Node' (c0 : 'Yielding' b : cs) m r
+--   -> 'Node' (c0 : 'Yield' a : cs) m r
+--   -> 'Node' (c0 : 'Yield' b : cs) m r
 --
 -- 'scanOnM' 'Cobweb.Core.i2' ::
 --      ('Monad' m, 'Functor' c0, 'Functor' c1, 'All' 'Functor' cs)
 --   => (x -> a -> m x)
 --   -> m x
 --   -> (x -> m b)
---   -> 'Node' (c0 : c1 : 'Yielding' a : cs) m r
---   -> 'Node' (c0 : c1 : 'Yielding' b : cs) m r
+--   -> 'Node' (c0 : c1 : 'Yield' a : cs) m r
+--   -> 'Node' (c0 : c1 : 'Yield' b : cs) m r
 -- @
 scanOnM ::
      forall m cs cs' n x a b r.
-     (Monad m, Replace n cs (Yielding b) cs', All Functor cs')
-  => IIndex n cs (Yielding a) -- ^ Index of the channel to scan over.
+     (Monad m, Replace n cs (Yield b) cs', All Functor cs')
+  => IIndex n cs (Yield a) -- ^ Index of the channel to scan over.
   -> (x -> a -> m x) -- ^ Combining function.
   -> m x -- ^ Seed.
   -> (x -> m b) -- ^ Finalising function (called for each intermediate
@@ -300,7 +300,7 @@ scanOnM n comb seed fin =
     loop !_ (Return r) = Return r
     loop !z (Effect eff) = Effect (fmap (loop z) eff)
     loop !z (Connect con) =
-      case fdecompReplaceIdx n (Proxy :: Proxy (Yielding b)) con of
+      case fdecompReplaceIdx n (Proxy :: Proxy (Yield b)) con of
         Left other -> Connect (fmap (loop z) other)
         Right (a, rest) -> do
           !z' <- lift $ comb z a

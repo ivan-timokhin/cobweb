@@ -48,7 +48,7 @@ import Data.Bifunctor (first)
 import Data.Type.Equality ((:~:), type (==))
 import Type.Class.Known (Known)
 
-import Cobweb.Core (Awaiting, Leaf, Yielding, gmapAll)
+import Cobweb.Core (Await, Leaf, Yield, gmapAll)
 import Cobweb.Internal (Node)
 import Cobweb.Type.Combinators
        (Inductive, All, FSum(FInL), IIndex, Remove, Replace, fuseSum, fuseSumAll,
@@ -159,34 +159,34 @@ fuseWith ::
   -> Node cs'' m r
 fuseWith f g n k = gmapAll (fuseSumWith f g n k)
 
--- | A specialisation of 'fuseWith' for 'Yielding' channels.
+-- | A specialisation of 'fuseWith' for 'Yield' channels.
 fuseWithMap ::
      ( (n == k) ~ 'False
      , All Functor cs
-     , Replace k cs (Yielding c) cs'
+     , Replace k cs (Yield c) cs'
      , Remove n cs' cs''
      , Functor m
      )
   => (a -> c) -- ^ Transform the values on the first channel.
   -> (b -> c) -- ^ Transform the values on the second channel.
-  -> IIndex n cs (Yielding a) -- ^ Index of the removed channel.
-  -> IIndex k cs (Yielding b) -- ^ Index of the replaced channel.
+  -> IIndex n cs (Yield a) -- ^ Index of the removed channel.
+  -> IIndex k cs (Yield b) -- ^ Index of the replaced channel.
   -> Node cs m r
   -> Node cs'' m r
 fuseWithMap f g = fuseWith (first f) (first g)
 
--- | A specialisation of 'fuseWith' for 'Awaiting' channels.
+-- | A specialisation of 'fuseWith' for 'Await' channels.
 fuseWithContramap ::
      ( (n == k) ~ 'False
      , All Functor cs
-     , Replace k cs (Awaiting c) cs'
+     , Replace k cs (Await c) cs'
      , Remove n cs' cs''
      , Functor m
      )
   => (c -> a) -- ^ Transform the values on the first channel.
   -> (c -> b) -- ^ Transform the values on the second channel.
-  -> IIndex n cs (Awaiting a) -- ^ Index of the removed channel.
-  -> IIndex k cs (Awaiting b) -- ^ Index of the replaced channel.
+  -> IIndex n cs (Await a) -- ^ Index of the removed channel.
+  -> IIndex k cs (Await b) -- ^ Index of the replaced channel.
   -> Node cs m r
   -> Node cs'' m r
 fuseWithContramap f g = fuseWith (. f) (. g)

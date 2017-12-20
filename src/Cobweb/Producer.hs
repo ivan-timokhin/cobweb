@@ -20,7 +20,7 @@ counterparts in "Cobweb.Core"; these are specialised for 'Producer's.
 
 module Cobweb.Producer
   ( Producer
-  , Yielding
+  , Yield
   , yield
   , each
   , generate
@@ -39,7 +39,7 @@ import Control.Monad.Trans (lift)
 import Type.Family.List (Last, Null)
 
 import Cobweb.Core
-       (Leaf, Producer, Yielding, eachOn, forOn, inspectLeaf, leafOn, mapOn,
+       (Leaf, Producer, Yield, eachOn, forOn, inspectLeaf, leafOn, mapOn,
         yieldOn)
 import Cobweb.Internal (Node(Connect, Effect, Return))
 import Cobweb.Type.Combinators
@@ -60,13 +60,13 @@ import Cobweb.Type.Combinators
 --        while it means what it says, all actual lists have known
 --        length, so this shouldn't be an issue.
 --
---    [@'Last' cs ~ 'Yielding' a@] The last channel in the list (the
---        one we'll be using) is @'Yielding' a@, i.e. produces values
+--    [@'Last' cs ~ 'Yield' a@] The last channel in the list (the
+--        one we'll be using) is @'Yield' a@, i.e. produces values
 --        of type @a@.
 --
 --    [@'Null' cs ~ ''False'@] The channel list should not be empty.
 yield ::
-     (Inductive cs, Last cs ~ Yielding a, Null cs ~ 'False)
+     (Inductive cs, Last cs ~ Yield a, Null cs ~ 'False)
   => a
   -> Node cs m ()
 yield = yieldOn lastIndex
@@ -114,21 +114,21 @@ next = inspectLeaf
 -- 'produceOn' 'i0' ::
 --       'Functor' m
 --    => 'Producer' a m r
---    -> 'Node' ('Yielding' a : cs) m r
+--    -> 'Node' ('Yield' a : cs) m r
 --
 -- 'produceOn' 'Cobweb.Core.i1' ::
 --       'Functor' m
 --    => 'Producer' a m r
---    -> 'Node' (c0 : 'Yielding' a : cs) m r
+--    -> 'Node' (c0 : 'Yield' a : cs) m r
 --
 -- 'produceOn' 'Cobweb.Core.i2' ::
 --       'Functor' m
 --    => 'Producer' a m r
---    -> 'Node' (c0 : c1 : 'Yielding' a : cs) m r
+--    -> 'Node' (c0 : c1 : 'Yield' a : cs) m r
 -- @
 produceOn ::
      (Functor m, Inductive cs)
-  => IIndex n cs (Yielding a) -- ^ A channel to attach to.
+  => IIndex n cs (Yield a) -- ^ A channel to attach to.
   -> Producer a m r
   -> Node cs m r
 produceOn = leafOn

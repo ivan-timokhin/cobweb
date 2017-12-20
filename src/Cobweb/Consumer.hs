@@ -18,7 +18,7 @@ counterparts in "Cobweb.Core"; these are specialised for 'Consumer's.
 
 module Cobweb.Consumer
   ( Consumer
-  , Awaiting
+  , Await
   , await
   , drain
   , discard
@@ -35,7 +35,7 @@ import Control.Monad (forever)
 import Control.Monad.Trans (lift)
 
 import Cobweb.Core
-       (Awaiting, Consumer, Leaf, Node, awaitOn, i0, inspectLeaf, leafOn,
+       (Await, Consumer, Leaf, Node, awaitOn, i0, inspectLeaf, leafOn,
         contraforOn, contramapOn)
 import Cobweb.Internal (Node(Connect, Effect, Return))
 import Cobweb.Type.Combinators (Inductive, All, IIndex)
@@ -49,7 +49,7 @@ import Cobweb.Type.Combinators (Inductive, All, IIndex)
 -- 'await' :: 'Consumer' a m a
 -- 'await' :: 'Cobweb.Pipe.Pipe' a b m a
 -- @
-await :: Inductive cs => Node (Awaiting a : cs) m a
+await :: Inductive cs => Node (Await a : cs) m a
 {-# NOINLINE await #-}
 await = awaitOn i0
 
@@ -109,21 +109,21 @@ nextRequest = inspectLeaf
 -- 'consumeOn' 'i0' ::
 --       'Functor' m
 --    => 'Consumer' a m r
---    -> 'Node' ('Awaiting' a : cs) m r
+--    -> 'Node' ('Await' a : cs) m r
 --
 -- 'consumeOn' 'Cobweb.Core.i1' ::
 --       'Functor' m
 --    => 'Consumer' a m r
---    -> 'Node' (c0 : 'Awaiting' a : cs) m r
+--    -> 'Node' (c0 : 'Await' a : cs) m r
 --
 -- 'consumeOn' 'Cobweb.Core.i2' ::
 --       'Functor' m
 --    => 'Consumer' a m r
---    -> 'Node' (c0 : c1 : 'Awaiting' a : cs) m r
+--    -> 'Node' (c0 : c1 : 'Await' a : cs) m r
 -- @
 consumeOn ::
      (Functor m, Inductive cs)
-  => IIndex n cs (Awaiting a)
+  => IIndex n cs (Await a)
   -> Consumer a m r
   -> Node cs m r
 consumeOn = leafOn

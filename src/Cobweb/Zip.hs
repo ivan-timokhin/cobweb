@@ -40,7 +40,7 @@ import Control.Applicative (liftA2)
 import Control.Monad (forever)
 import Data.Proxy (Proxy(Proxy))
 
-import Cobweb.Core (Awaiting, Yielding, awaitOn, yieldOn)
+import Cobweb.Core (Await, Yield, awaitOn, yieldOn)
 import Cobweb.Internal (Node(Connect, Effect, Return))
 import Cobweb.Type.Combinators
        (All, Append, FSum(FInL, FInR), IIndex, Remove, fdecompIdx, finl,
@@ -49,7 +49,7 @@ import Cobweb.Type.Combinators
 -- $specialised
 --
 -- This section contains functions dedicated specifically to merging
--- 'Yielding' streams.  Concretely, they are provided in a form of
+-- 'Yield' streams.  Concretely, they are provided in a form of
 -- 'Node's that can be linked with actual producers using functions
 -- from "Cobweb.Link" module.
 
@@ -72,7 +72,7 @@ import Cobweb.Type.Combinators
 zippingWith ::
      Functor m
   => (a -> b -> c)
-  -> Node '[ Awaiting a, Awaiting b, Yielding c] m r
+  -> Node '[ Await a, Await b, Yield c] m r
 zippingWith f =
   forever $ do
     a <- awaitOn i0
@@ -84,7 +84,7 @@ zippingWith f =
 -- @
 -- 'zipping' = 'zippingWith' (,)
 -- @
-zipping :: Functor m => Node '[ Awaiting a, Awaiting b, Yielding (a, b)] m r
+zipping :: Functor m => Node '[ Await a, Await b, Yield (a, b)] m r
 zipping = zippingWith (,)
 
 -- | Merges three streams of values, same as 'zippingWith'.
@@ -93,7 +93,7 @@ zipping = zippingWith (,)
 zippingWith3 ::
      Functor m
   => (a -> b -> c -> d)
-  -> Node '[ Awaiting a, Awaiting b, Awaiting c, Yielding d] m r
+  -> Node '[ Await a, Await b, Await c, Yield d] m r
 zippingWith3 f =
   forever $ do
     a <- awaitOn i0
@@ -108,7 +108,7 @@ zippingWith3 f =
 -- @
 zipping3 ::
      Functor m
-  => Node '[ Awaiting a, Awaiting b, Awaiting c, Yielding (a, b, c)] m r
+  => Node '[ Await a, Await b, Await c, Yield (a, b, c)] m r
 zipping3 = zippingWith3 (,,)
 
 -- $generic
@@ -169,10 +169,10 @@ zipsWith combine n k = flip loopLeft
 --
 -- For common channel types, this means
 --
---  [@'Yielding' a@] adds a 'Monoid' constraint on @a@, and combines
+--  [@'Yield' a@] adds a 'Monoid' constraint on @a@, and combines
 --                   yielded values via 'mappend'.
 --
---  [@'Awaiting' a@] receive one value, then use it to satisfy both
+--  [@'Await' a@] receive one value, then use it to satisfy both
 --                   requests.
 --
 -- @

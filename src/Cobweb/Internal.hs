@@ -80,8 +80,8 @@ import Cobweb.Type.Combinators (All, FSum, Inductive)
 -- produces values of type @a@ on the first channel, consumes values
 -- of type @b@ on the second, and produces values of type @c@ on the
 -- third.  "Cobweb.Core" provides aliases for these (most common)
--- channel types: 'Cobweb.Core.Yielding' for @(,)@, and
--- 'Cobweb.Core.Awaiting' for @(->)@.
+-- channel types: 'Cobweb.Core.Yield' for @(,)@, and
+-- 'Cobweb.Core.Await' for @(->)@.
 data Node cs m r
   = Return r -- ^ The computation has completed, producing resulting value.
   | Effect (m (Node cs m r)) -- ^ Invoke effect in the base monad.
