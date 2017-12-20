@@ -45,14 +45,22 @@ module Cobweb.Fuse
   ) where
 
 import Data.Bifunctor (first)
-import Data.Type.Equality ((:~:), type (==))
-import Type.Class.Known (Known)
+import Data.Type.Equality (type (==))
 
 import Cobweb.Core (Await, Leaf, Yield, gmapAll)
 import Cobweb.Internal (Node)
 import Cobweb.Type.Combinators
-       (Inductive, All, FSum(FInL), IIndex, Remove, Replace, fuseSum, fuseSumAll,
-        fuseSumWith)
+  ( All
+  , AllEqual
+  , FSum(FInL)
+  , IIndex
+  , Inductive
+  , Remove
+  , Replace
+  , fuseSum
+  , fuseSumAll
+  , fuseSumWith
+  )
 
 -- | Given (different) indices of two identical channels of a 'Node',
 -- fuse them together at the location of the /second/ index, dropping
@@ -194,7 +202,7 @@ fuseWithContramap f g = fuseWith (. f) (. g)
 -- | Given a 'Node' with /all/ channels identical, fuse them all
 -- together.
 fuseAll ::
-     (All (Known ((:~:) c)) cs, All Functor cs, Inductive cs, Functor m)
+     (cs `AllEqual` c, All Functor cs, Inductive cs, Functor m)
   => Node cs m r
   -> Leaf c m r
 fuseAll = gmapAll (FInL . fuseSumAll)

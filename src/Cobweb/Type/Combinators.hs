@@ -69,14 +69,14 @@ module Cobweb.Type.Combinators
   , fuseSumAll
     -- * Type synonyms
   , All
+  , AllEqual
   ) where
 
 import Data.Bifunctor (first)
+import Data.Kind (Constraint)
 import Data.Type.Equality ((:~:)(Refl), type (==))
 import Data.Type.Index (Index(IS, IZ))
 import Data.Type.Length (Length(LS, LZ))
-import Type.Class.Known (Known(known))
-import Type.Class.Witness (Witness((\\)))
 import Type.Family.List (type (<$>), Last, ListC, Null)
 import Type.Family.Nat
   ( Len
@@ -308,7 +308,7 @@ class Inductive (fs :: [* -> *]) where
     -> IIndex m fs g
     -> FSum fs a
     -> FSum res a
-  fuseSumAllI :: All (Known ((:~:) f)) fs => FSum fs a -> f a
+  fuseSumAllI :: (fs `AllEqual` f) => FSum fs a -> f a
 
 instance Inductive '[] where
   mapI _ = absurdFSum
@@ -403,7 +403,7 @@ instance Inductive fs => Inductive (f : fs) where
   fuseSumWithI f g (RemS r) (IIS n) (RepS rep) (IIS m) (FInR x) =
     FInR (fuseSumWithI f g r n rep m x)
   {-# INLINE fuseSumWithI #-}
-  fuseSumAllI (FInL x) = idEq x
+  fuseSumAllI (FInL x) = x
   fuseSumAllI (FInR x) = fuseSumAllI x
   {-# INLINE fuseSumAllI #-}
 
@@ -614,15 +614,9 @@ fuseSumWith f g n' = fuseSumWithI f g removeW n' replaceW
 
 -- | Unify /all/ of the terms in the sum, if they are all identical
 -- (which is the meaning of a rather weird-looking constraint).
-fuseSumAll :: (Inductive fs, All (Known ((:~:) f)) fs) => FSum fs a -> f a
+fuseSumAll :: (Inductive fs, fs `AllEqual` f) => FSum fs a -> f a
 {-# INLINE fuseSumAll #-}
 fuseSumAll = fuseSumAllI
-
-idEq ::
-  forall f g a. Known ((:~:) f) g
-  => g a
-  -> f a
-idEq g = g \\ (known :: f :~: g)
 
 -- | An analogue of 'all' for type-level lists.
 --
@@ -630,3 +624,8 @@ idEq g = g \\ (known :: f :~: g)
 -- list @as@ should satisfy the constraint @f@; e.g. @'All' 'Functor'
 -- fs@ means that all elements of @fs@ should be functors.
 type All f as = ListC (f <$> as)
+
+-- | Require that all elements of list @bs@ are equal to @a@.
+type family AllEqual bs a :: Constraint where
+  '[] `AllEqual` a = ()
+  (b : bs) `AllEqual` a = (a ~ b, bs `AllEqual` a)
