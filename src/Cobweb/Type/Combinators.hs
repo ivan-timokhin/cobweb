@@ -204,8 +204,8 @@ absurdRemove r = case r of {}
 class (Inductive as, Inductive bs) =>
       Remove n as bs
   | n as -> bs
-  -- | Witness of the relationship in question.
   where
+  -- | Witness of the relationship in question.
   removeW :: RemoveW n as bs
 
 instance Inductive as => Remove 'Z (a : as) as where
@@ -230,8 +230,8 @@ absurdReplace r = case r of {}
 class (Inductive as, Inductive bs) =>
       Replace n as b bs
   | n as b -> bs
-  -- | Witness of the relationship in question.
   where
+  -- | Witness of the relationship in question.
   replaceW :: ReplaceW n as b bs
 
 instance Inductive as => Replace 'Z (a : as) b (b : as) where
@@ -254,8 +254,8 @@ class (Inductive as, Inductive bs, Inductive cs) =>
       Append as bs cs
   | as bs -> cs
   , as cs -> bs
-  -- | Witness of the relationship in question.
   where
+  -- | Witness of the relationship in question.
   appendW :: AppendW as bs cs
 
 instance Inductive as => Append '[] as as where
@@ -264,6 +264,10 @@ instance Inductive as => Append '[] as as where
 instance Append as bs cs => Append (a : as) bs (a : cs) where
   appendW = AppS appendW
 
+-- | This is a utility class, used to unroll operations on 'FSum',
+-- significantly speeding them up in the common case of short known
+-- list.  All finite lists are instances of this class, so it doesn't
+-- actually constrain anything.
 class Inductive (fs :: [* -> *]) where
   mapI :: All Functor fs => (a -> b) -> FSum fs a -> FSum fs b
   lengthI :: Length fs
