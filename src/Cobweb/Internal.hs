@@ -49,7 +49,7 @@ module Cobweb.Internal
   , observe
   ) where
 
-import Control.Monad (ap)
+import Control.Monad (ap, liftM)
 import Control.Monad.Base (MonadBase(liftBase))
 import Control.Monad.Catch (MonadCatch(catch), MonadThrow(throwM))
 import Control.Monad.Except (MonadError(catchError, throwError))
@@ -104,7 +104,7 @@ cata algR algC algE = loop
     loop (Effect eff) = algE (fmap loop eff)
 
 instance (All Functor cs, Inductive cs, Functor m) => Functor (Node cs m) where
-  fmap f x = x >>= (pure . f)
+  fmap = liftM
 
 instance (All Functor cs, Inductive cs, Functor m) =>
          Applicative (Node cs m) where
