@@ -25,17 +25,17 @@ module Cobweb
     -- *** Running
   , run
     -- *** Initiating connections
-  , connectsOn
+  , connectOn
   , yieldOn
   , eachOn
   , awaitOn
     -- *** Looping
-  , forsOn
-  , forsOnLeaf
+  , gforOn
+  , gforOnLeaf
   , forOn
   , forOnLeaf
-  , preforOn
-  , preforOnLeaf
+  , contraforOn
+  , contraforOnLeaf
     -- * Producers
     -- $producers
   , Producer
@@ -54,7 +54,7 @@ module Cobweb
   , await
   , drain
     -- ** Looping
-  , prefor
+  , contrafor
     -- ** Embedding
   , consumeOn
     -- * Pipes
@@ -121,24 +121,66 @@ module Cobweb
   , i10
   ) where
 
-import Cobweb.Consumer
-       (Awaiting, Consumer, await, consumeOn, drain, prefor)
+import Cobweb.Consumer (Awaiting, Consumer, await, consumeOn, contrafor, drain)
 import Cobweb.Core
-       (Effect, Leaf, Node, Tube, awaitOn, connectsOn, eachOn, forOn,
-        forOnLeaf, forsOn, forsOnLeaf, i0, i1, i10, i2, i3, i4, i5, i6, i7,
-        i8, i9, preforOn, preforOnLeaf, run, yieldOn)
+  ( Effect
+  , Leaf
+  , Node
+  , Tube
+  , awaitOn
+  , connectOn
+  , contraforOn
+  , contraforOnLeaf
+  , eachOn
+  , forOn
+  , forOnLeaf
+  , gforOn
+  , gforOnLeaf
+  , i0
+  , i1
+  , i10
+  , i2
+  , i3
+  , i4
+  , i5
+  , i6
+  , i7
+  , i8
+  , i9
+  , run
+  , yieldOn
+  )
 import Cobweb.Fold
-       (foldMNode, foldMNode_, foldMOn, foldMOn_, foldNode, foldNode_,
-        foldOn, foldOn_)
+  ( foldMNode
+  , foldMNode_
+  , foldMOn
+  , foldMOn_
+  , foldNode
+  , foldNode_
+  , foldOn
+  , foldOn_
+  )
 import Cobweb.Link (Annihilate(annihilate), (>->), (>-|), (|->))
 import Cobweb.Pipe (Pipe, cat, dropping, mapping, mappingM, taking)
 import Cobweb.Producer
-       (Producer, Yielding, each, for, generate, produceOn, yield)
-import Cobweb.Resource
-       (region, regionC, regionCE, regionE, runNodeRes)
+  ( Producer
+  , Yielding
+  , each
+  , for
+  , generate
+  , produceOn
+  , yield
+  )
+import Cobweb.Resource (region, regionC, regionCE, regionE, runNodeRes)
 import Cobweb.Unzip
-       (partitioning, partitioningEither, partitioningWithEither,
-        unzipping, unzipping3, unzippingWith, unzippingWith3)
+  ( partitioning
+  , partitioningEither
+  , partitioningWithEither
+  , unzipping
+  , unzipping3
+  , unzippingWith
+  , unzippingWith3
+  )
 import Cobweb.Zip (zipping, zipping3, zippingWith, zippingWith3)
 
 -- $core

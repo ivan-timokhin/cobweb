@@ -42,7 +42,7 @@ import qualified Control.Monad.Except as E
 import qualified Control.Monad.Writer.Strict as WS
 import qualified Control.Monad.Writer.Lazy as WL
 
-import Cobweb.Core (Node, connects, forsAll, run)
+import Cobweb.Core (Node, connect, gforAll, run)
 import Cobweb.Internal (Node(Connect, Effect, Return), unsafeHoist)
 import Cobweb.Type.Combinators (Inductive, All)
 
@@ -69,12 +69,12 @@ distribute node
   -- First, we insert a fresh 'Node' layer beneath @t@
   -- (so Node (t m) --> Node (t (Node m))).  This is the hoisting part.
   --
-  -- Second, we iterate over old connections via 'forsAll', and move
+  -- Second, we iterate over old connections via 'gforAll', and move
   -- them all to the new 'Node' layer.  This is the lift.lift part.
   --
   -- Finally, now that the outer layer has no outstanding connections,
   -- we simply run it.
- = run $ forsAll (unsafeHoist (hoist lift) node) (lift . lift . connects)
+ = run $ gforAll (unsafeHoist (hoist lift) node) (lift . lift . connect)
 
 -- | Run 'SS.StateT', returning both final state and result.
 runStateN ::

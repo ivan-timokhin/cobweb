@@ -25,15 +25,15 @@ resulting control flow looks like this:
 
 @
    .   .   .                        .    .    .
-|  connectsOn  |                     do stuff
+|  connectOn   |                     do stuff
 |              |                 ________________
 |_____________ lreq ---><--- rresp              |
                                  |              |
-    do stuff                     |  connectsOn  |
+    do stuff                     |  connectOn   |
 ________________                 |              |
 |              lresp ---><--- rreq______________|
 |              |
-|  connectsOn  |                     do stuff
+|  connectOn   |                     do stuff
    .   .   .                       .    .    .
 @
 
@@ -51,7 +51,7 @@ import Control.Monad.Trans (lift)
 import Data.Functor.Compose (Compose(Compose))
 
 import Cobweb.Core
-       (Awaiting, Leaf, Node, Tube, Yielding, connectsOn, forsOn, i0, i1)
+       (Awaiting, Leaf, Node, Tube, Yielding, connectOn, gforOn, i0, i1)
 import Cobweb.Type.Combinators (Inductive, All, Append, IIndex, Remove)
 
 -- | A type of duplex channel, producing values of type @o@ and
@@ -74,7 +74,7 @@ type Proxy a' a b' b = Tube (Request a' a) (Request b b')
 
 -- | Send a request on the channel with a specified index.
 requestOn :: Inductive cs => IIndex n cs (Request a b) -> a -> Node cs m b
-requestOn n x = connectsOn n (Compose (x, id))
+requestOn n x = connectOn n (Compose (x, id))
 
 -- | Use the provided function to serve incoming requests.
 --
@@ -266,6 +266,6 @@ forOnDuplex ::
   -> Node cs m r
   -> (a -> Node cs' m b) -- ^ Replacement for 'requestOn'.
   -> Node rescs m r
-forOnDuplex n node f = forsOn n node body
+forOnDuplex n node f = gforOn n node body
   where
     body (Compose (a, fb)) = fmap fb (f a)

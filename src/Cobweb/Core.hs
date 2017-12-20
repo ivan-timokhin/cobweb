@@ -49,29 +49,29 @@ module Cobweb.Core
   , i9
   , i10
     -- * Initiating connections
-  , connects
-  , connectsOn
+  , connect
+  , connectOn
   , yieldOn
   , eachOn
   , awaitOn
   , leafOn
     -- * Maps
-  , mapsAll
-  , mapsOn
-  , mapsOnM
-  , mapsOnM'
+  , gmapAll
+  , gmapOn
+  , gmapOnM
+  , gmapOnM'
   , mapOn
   , mapOnM
-  , premapOn
-  , premapOnM
+  , contramapOn
+  , contramapOnM
     -- * Looping over 'Node's
-  , forsAll
-  , forsOn
-  , forsOnLeaf
+  , gforAll
+  , gforOn
+  , gforOnLeaf
   , forOn
   , forOnLeaf
-  , preforOn
-  , preforOnLeaf
+  , contraforOn
+  , contraforOnLeaf
   ) where
 
 import Control.Monad (join)
@@ -136,34 +136,34 @@ inspectLeaf = fmap (second fsumOnly) . inspect
 
 -- | Initiate a connection on /some/ channel.
 --
--- In practice, it is almost always preferable to use 'connectsOn', or
+-- In practice, it is almost always preferable to use 'connectOn', or
 -- specialised versions ('yieldOn', 'awaitOn').
-connects :: (All Functor cs, Inductive cs) => FSum cs r -> Node cs m r
-{-# INLINE connects #-}
-connects con = Connect $ fmap Return con
+connect :: (All Functor cs, Inductive cs) => FSum cs r -> Node cs m r
+{-# INLINE connect #-}
+connect con = Connect $ fmap Return con
 
 -- | Initiate a connection on a channel specified by an index.
 --
 -- ====__Signatures for some specific indices__
 -- @
--- 'connectsOn' 'i0' :: 'Functor' c0 => c0 r -> 'Node' (c0 : cs) m r
--- 'connectsOn' 'i1' :: 'Functor' c1 => c1 r -> 'Node' (c0 : c1 : cs) m r
--- 'connectsOn' 'i2' :: 'Functor' c2 => c2 r -> 'Node' (c0 : c1 : c2 : cs) m r
+-- 'connectOn' 'i0' :: 'Functor' c0 => c0 r -> 'Node' (c0 : cs) m r
+-- 'connectOn' 'i1' :: 'Functor' c1 => c1 r -> 'Node' (c0 : c1 : cs) m r
+-- 'connectOn' 'i2' :: 'Functor' c2 => c2 r -> 'Node' (c0 : c1 : c2 : cs) m r
 -- @
 --
 -- ====__Examples of specialised types__
--- 'connectsOn' can be specialised to any of the following types (and
+-- 'connectOn' can be specialised to any of the following types (and
 -- more; these are just examples):
 --
 -- @
--- 'connectsOn' 'i0' :: (a, r) -> 'Node' '['Yielding' a] m r
--- 'connectsOn' 'i0' :: (a -> r) -> 'Node' '['Awaiting' a] m r
--- 'connectsOn' 'i0' :: (a -> r) -> 'Node' '['Awaiting' a, 'Yielding' b, 'Awaiting' c] m r
--- 'connectsOn' 'i3' :: (a, r) -> 'Node' '[f0, f1, f2, 'Yielding' a, f4] m r
+-- 'connectOn' 'i0' :: (a, r) -> 'Node' '['Yielding' a] m r
+-- 'connectOn' 'i0' :: (a -> r) -> 'Node' '['Awaiting' a] m r
+-- 'connectOn' 'i0' :: (a -> r) -> 'Node' '['Awaiting' a, 'Yielding' b, 'Awaiting' c] m r
+-- 'connectOn' 'i3' :: (a, r) -> 'Node' '[f0, f1, f2, 'Yielding' a, f4] m r
 -- @
-connectsOn :: (Functor c, Inductive cs) => IIndex n cs c -> c r -> Node cs m r
-{-# INLINE connectsOn #-}
-connectsOn n con = Connect $ finjectIdx n $ fmap Return con
+connectOn :: (Functor c, Inductive cs) => IIndex n cs c -> c r -> Node cs m r
+{-# INLINE connectOn #-}
+connectOn n con = Connect $ finjectIdx n $ fmap Return con
 
 -- | Provide a value on a channel specified by an index.
 --
@@ -175,7 +175,7 @@ connectsOn n con = Connect $ finjectIdx n $ fmap Return con
 -- @
 yieldOn :: Inductive cs => IIndex n cs (Yielding a) -> a -> Node cs m ()
 {-# INLINE yieldOn #-}
-yieldOn n a = connectsOn n (a, ())
+yieldOn n a = connectOn n (a, ())
 
 -- | Yield all elements of a container on a specified channel.
 --
@@ -198,7 +198,7 @@ eachOn n = traverse_ (yieldOn n)
 -- @
 awaitOn :: Inductive cs => IIndex n cs (Awaiting a) -> Node cs m a
 {-# INLINE awaitOn #-}
-awaitOn n = connectsOn n id
+awaitOn n = connectOn n id
 
 -- | Run an entire 'Leaf' within a bigger (in terms of channels)
 -- 'Node', by identifying 'Leaf's sole channel with one of the
@@ -215,41 +215,41 @@ leafOn ::
   => IIndex n cs c
   -> Leaf c m r
   -> Node cs m r
-leafOn n = mapsAll (finjectIdx n . fsumOnly)
+leafOn n = gmapAll (finjectIdx n . fsumOnly)
 
 -- | Transform entire list of channels of a 'Node' via a natural
 -- transformation of their 'FSum'.
-mapsAll ::
+gmapAll ::
      (Functor m, All Functor cs, Inductive cs)
   => (forall x. FSum cs x -> FSum cs' x) -- ^ Convert communications
      -- on old channels into communications on new ones.
   -> Node cs m r -- ^ Node with an old list of channels.
   -> Node cs' m r -- ^ Same node, but with transformed communications.
-mapsAll = transformCons
+gmapAll = transformCons
 
 -- | Transform a single channel of a 'Node' via a natural transformation.
 --
 -- ====__Signatures for some specific indices__
 -- @
--- 'mapsOn' 'i0' ::
+-- 'gmapOn' 'i0' ::
 --       ('Functor' m, 'Functor' c, 'All' 'Functor' cs)
 --    => (forall x. c x -> c' x)
 --    -> 'Node' (c : cs) m r
 --    -> 'Node' (c' : cs) m r
 --
--- 'mapsOn' 'i1' ::
+-- 'gmapOn' 'i1' ::
 --       ('Functor' m, 'Functor' c0, 'Functor' c1, 'All' 'Functor' cs)
 --    => (forall x. c1 x -> c' x)
 --    -> 'Node' (c0 : c1 : cs) m r
 --    -> 'Node' (c0 : c' : cs) m r
 --
--- 'mapsOn' 'i2' ::
+-- 'gmapOn' 'i2' ::
 --       ('Functor' m, 'Functor' c0, 'Functor' c1, 'Functor' c2, 'All' 'Functor' cs)
 --    => (forall x. c2 x -> c' x)
 --    -> 'Node' (c0 : c1 : c2 : cs) m r
 --    -> 'Node' (c0 : c1 : c' : cs) m r
 -- @
-mapsOn ::
+gmapOn ::
      (Functor m, All Functor cs, Replace n cs c' cs')
   => IIndex n cs c -- ^ An index of a channel to be replaced.
   -> (forall x. c x -> c' x) -- ^ A natural transformation to apply
@@ -257,39 +257,39 @@ mapsOn ::
   -> Node cs m r -- ^ A 'Node' with an old channel.
   -> Node cs' m r -- ^ The same 'Node', but the channel in question is
      -- replaced by a new one.
-mapsOn n f = mapsAll (freplaceIdx n f)
+gmapOn n f = gmapAll (freplaceIdx n f)
 
 -- | Transform a single channel of a 'Node', with possible effects in
 -- the base monad outside of a new channel functor.
 --
 -- ====__Signatures for some specific indices__
 -- @
--- 'mapsOnM' 'i0' ::
+-- 'gmapOnM' 'i0' ::
 --       ('Functor' m, 'Functor' c, 'All' 'Functor' cs)
 --    => (forall x. c x -> m (c' x))
 --    -> 'Node' (c : cs) m r
 --    -> 'Node' (c' : cs) m r
 --
--- 'mapsOnM' 'i1' ::
+-- 'gmapOnM' 'i1' ::
 --       ('Functor' m, 'Functor' c0, 'Functor' c1, 'All' 'Functor' cs)
 --    => (forall x. c1 x -> m (c' x))
 --    -> 'Node' (c0 : c1 : cs) m r
 --    -> 'Node' (c0 : c' : cs) m r
 --
--- 'mapsOnM' 'i2' ::
+-- 'gmapOnM' 'i2' ::
 --       ('Functor' m, 'Functor' c0, 'Functor' c1, 'Functor' c2, 'All' 'Functor' cs)
 --    => (forall x. c2 x -> m (c' x))
 --    -> 'Node' (c0 : c1 : c2 : cs) m r
 --    -> 'Node' (c0 : c1 : c' : cs) m r
 -- @
-mapsOnM ::
+gmapOnM ::
      forall m cs cs' n c' r c. (Functor m, All Functor cs, Replace n cs c' cs')
   => IIndex n cs c -- ^ An index of a channel to be replaced.
   -> (forall x. c x -> m (c' x)) -- ^ A natural transformation to
      -- apply to the channel.
   -> Node cs m r
   -> Node cs' m r
-mapsOnM n f = cata Return alg Effect
+gmapOnM n f = cata Return alg Effect
   where
     alg con =
       case fdecompReplaceIdx n (Proxy :: Proxy c') con of
@@ -302,37 +302,37 @@ mapsOnM n f = cata Return alg Effect
 --
 -- ====__Signatures for some specific indices__
 -- @
--- 'mapsOnM'' 'i0' ::
+-- 'gmapOnM'' 'i0' ::
 --       ('Functor' m, 'Functor' c, 'All' 'Functor' cs)
 --    => (forall x. c x -> c' (m x))
 --    -> 'Node' (c : cs) m r
 --    -> 'Node' (c' : cs) m r
 --
--- 'mapsOnM'' 'i1' ::
+-- 'gmapOnM'' 'i1' ::
 --       ('Functor' m, 'Functor' c0, 'Functor' c1, 'All' 'Functor' cs)
 --    => (forall x. c1 x -> c' (m x))
 --    -> 'Node' (c0 : c1 : cs) m r
 --    -> 'Node' (c0 : c' : cs) m r
 --
--- 'mapsOnM'' 'i2' ::
+-- 'gmapOnM'' 'i2' ::
 --       ('Functor' m, 'Functor' c0, 'Functor' c1, 'Functor' c2, 'All' 'Functor' cs)
 --    => (forall x. c2 x -> c' (m x))
 --    -> 'Node' (c0 : c1 : c2 : cs) m r
 --    -> 'Node' (c0 : c1 : c' : cs) m r
 -- @
-mapsOnM' ::
+gmapOnM' ::
      (Functor m, All Functor cs, Functor c', Replace n cs c' cs')
   => IIndex n cs c -- ^ An index of a channel to be replaced.
   -> (forall x. c x -> c' (m x)) -- ^ A natural transformation to
      -- apply to the channel.
   -> Node cs m r
   -> Node cs' m r
-mapsOnM' n f = transformCons (freplaceIdx n (fmap Effect . f))
+gmapOnM' n f = transformCons (freplaceIdx n (fmap Effect . f))
 
 -- | Transform an outgoing stream of values on a specified channel.
 --
 -- @
--- 'mapOn' n f = 'mapsOn' n (\\(a, x) -> (f a, x))
+-- 'mapOn' n f = 'gmapOn' n (\\(a, x) -> (f a, x))
 -- @
 --
 -- ====__Signatures for some specific indices__
@@ -361,7 +361,7 @@ mapOn ::
   -> (a -> b) -- ^ A function to apply to outgoing elements.
   -> Node cs m r -- ^ An old 'Node'.
   -> Node cs' m r -- ^ Same node, but with the channel replaced.
-mapOn n f = mapsOn n (first f)
+mapOn n f = gmapOn n (first f)
 
 -- | Transform an outgoing stream of values, with possible effects in
 -- the base monad along the way.
@@ -392,35 +392,35 @@ mapOnM ::
   -> (a -> m b) -- ^ A function to apply to outgoing elements.
   -> Node cs m r -- ^ An old 'Node'.
   -> Node cs' m r -- ^ Same node, but with channel replaced.
-mapOnM n f = mapsOnM n (\(a, x) -> fmap (, x) (f a))
+mapOnM n f = gmapOnM n (\(a, x) -> fmap (, x) (f a))
 
 -- | Transform an incoming stream of values on a specified channel.
 --
 -- @
--- 'premapOn' n f = 'mapsOn' n (\\g -> g . f)
+-- 'contramapOn' n f = 'gmapOn' n (\\g -> g . f)
 -- @
 --
 -- ====__Signatures for some specific indices__
 -- @
--- 'premapOn' 'i0' ::
+-- 'contramapOn' 'i0' ::
 --      ('Functor' m, 'All' 'Functor' cs)
 --   => (b -> a)
 --   -> 'Node' ('Awaiting' a : cs) m r
 --   -> 'Node' ('Awaiting' b : cs) m r
 --
--- 'premapOn' 'i1' ::
+-- 'contramapOn' 'i1' ::
 --      ('Functor' m, 'Functor' c0, 'All' 'Functor' cs)
 --   => (b -> a)
 --   -> 'Node' (c0 : 'Awaiting' a : cs) m r
 --   -> 'Node' (c0 : 'Awaiting' b : cs) m r
 --
--- 'premapOn' 'i2' ::
+-- 'contramapOn' 'i2' ::
 --      ('Functor' m, 'Functor' c0, 'Functor' c1, 'All' 'Functor' cs)
 --   => (b -> a)
 --   -> 'Node' (c0 : c1 : 'Awaiting' a : cs) m r
 --   -> 'Node' (c0 : c1 : 'Awaiting' b : cs) m r
 -- @
-premapOn ::
+contramapOn ::
      (Functor m, All Functor cs, Replace n cs (Awaiting b) cs')
   => IIndex n cs (Awaiting a) -- ^ Index of the channel to be mapped
                               -- over.
@@ -428,32 +428,32 @@ premapOn ::
      -- 'Node' into the ones requested by the old one.
   -> Node cs m r -- ^ Original 'Node'.
   -> Node cs' m r -- ^ Same 'Node', but with the channel replaced.
-premapOn n f = mapsOn n (. f)
+contramapOn n f = gmapOn n (. f)
 
 -- | Transform an incoming stream of values, with some effects in the
 -- base monad along the way.
 --
 -- ====__Signatures for some specific indices__
 -- @
--- 'premapOnM' 'i0' ::
+-- 'contramapOnM' 'i0' ::
 --      ('Functor' m, 'All' 'Functor' cs)
 --   => (b -> m a)
 --   -> 'Node' ('Awaiting' a : cs) m r
 --   -> 'Node' ('Awaiting' b : cs) m r
 --
--- 'premapOnM' 'i1' ::
+-- 'contramapOnM' 'i1' ::
 --      ('Functor' m, 'Functor' c0, 'All' 'Functor' cs)
 --   => (b -> m a)
 --   -> 'Node' (c0 : 'Awaiting' a : cs) m r
 --   -> 'Node' (c0 : 'Awaiting' b : cs) m r
 --
--- 'premapOnM' 'i2' ::
+-- 'contramapOnM' 'i2' ::
 --      ('Functor' m, 'Functor' c0, 'Functor' c1, 'All' 'Functor' cs)
 --   => (b -> m a)
 --   -> 'Node' (c0 : c1 : 'Awaiting' a : cs) m r
 --   -> 'Node' (c0 : c1 : 'Awaiting' b : cs) m r
 -- @
-premapOnM ::
+contramapOnM ::
      (Applicative m, All Functor cs, Replace n cs (Awaiting b) cs')
   => IIndex n cs (Awaiting a) -- ^ Index of the channel to be mapped
                               -- over.
@@ -461,38 +461,38 @@ premapOnM ::
      -- 'Node' into the ones requested by the old one.
   -> Node cs m r -- ^ Original 'Node'.
   -> Node cs' m r -- ^ Same 'Node', but with the channel replaced.
-premapOnM n f = mapsOnM' n (\g -> fmap g . f)
+contramapOnM n f = gmapOnM' n (\g -> fmap g . f)
 
 -- | Replace the current list of channels by substituting a
 -- computation with new channels for each communication attempt.
 --
--- Essentially, @'forsAll' node body@ replaces each call to 'connects'
+-- Essentially, @'gforAll' node body@ replaces each call to 'connect'
 -- (as well as specialised variants) with @body@.
-forsAll ::
+gforAll ::
      (Functor m, All Functor cs, Inductive cs, All Functor cs', Inductive cs')
   => Node cs m r
   -> (forall x. FSum cs x -> Node cs' m x)
   -> Node cs' m r
-forsAll node f = cata Return (join . f) Effect node
+gforAll node f = cata Return (join . f) Effect node
 
 -- | Substitute each attempt to communicate on a given channel with a
 -- computation with a different list of channels.
 --
--- The net result of @'forsOn' n node body@ is as if each instance of
--- @'connectsOn' n@ in @node@ (including specialisations, such as
+-- The net result of @'gforOn' n node body@ is as if each instance of
+-- @'connectOn' n@ in @node@ (including specialisations, such as
 -- 'yieldOn' or 'awaitOn') was replaced by the @body@, with all
 -- indices in other connection suitably modified to fit new channel list.
 --
 -- ====__Signatures for some specific indices__
 -- @
--- 'forsOn' 'i0' ::
+-- 'gforOn' 'i0' ::
 --       ( 'Functor' m, 'Functor' c, 'All' 'Functor' cs, 'All 'Functor' cs'
 --       , 'Known' 'Length' cs)
 --    => 'Node' (c : cs) m r
 --    -> (forall x. c x -> 'Node' cs' m x)
 --    -> 'Node' (cs 'Type.Family.List.++' cs') m r
 --
--- 'forsOn' 'i1' ::
+-- 'gforOn' 'i1' ::
 --       ( 'Functor' m, 'Functor' c0, 'Functor' c1
 --       , 'All' 'Functor' cs, 'All' 'Functor' cs'
 --       , 'Known' 'Length' cs)
@@ -500,7 +500,7 @@ forsAll node f = cata Return (join . f) Effect node
 --    -> (forall x. c1 x -> 'Node' cs' m x)
 --    -> Node ((c0 : cs) 'Type.Family.List.++' cs') m r
 --
--- 'forsOn' 'i2' ::
+-- 'gforOn' 'i2' ::
 --       ( 'Functor' m, 'Functor' c0, 'Functor' c1, 'Functor' c2
 --       , 'All' 'Functor' cs, 'All' 'Functor' cs'
 --       , 'Known' 'Length' cs)
@@ -508,7 +508,7 @@ forsAll node f = cata Return (join . f) Effect node
 --    -> (forall x. c2 x -> 'Node' cs' m x)
 --    -> 'Node' ((c0 : c1 : cs) 'Type.Family.List.++' cs') m r
 -- @
-forsOn ::
+gforOn ::
      forall m n cs ocs cs' rescs r c.
      ( Functor m
      , All Functor cs
@@ -520,15 +520,15 @@ forsOn ::
   -> Node cs m r -- ^ A source of communication requests to loop over.
   -> (forall x. c x -> Node cs' m x) -- ^ Loop body.
   -> Node rescs m r
-forsOn idx node f =
-  forsOn_ idx node f \\
+gforOn idx node f =
+  gforOn_ idx node f \\
   appendAll
     (Proxy :: Proxy Functor)
     (Proxy :: Proxy ocs)
     (Proxy :: Proxy cs') \\
   iwithoutRetainsAll (Proxy :: Proxy Functor) idx
 
-forsOn_ ::
+gforOn_ ::
      forall m n cs ocs cs' rescs r c.
      ( Functor m
      , All Functor cs
@@ -542,12 +542,12 @@ forsOn_ ::
   -> Node cs m r
   -> (forall x. c x -> Node cs' m x)
   -> Node rescs m r
-forsOn_ n node f = forsAll node body
+gforOn_ n node f = gforAll node body
   where
     body con =
       case fdecompIdx n con of
-        Left other -> connects (finl proxyInner other)
-        Right c -> mapsAll (finr proxyOuter) (f c)
+        Left other -> connect (finl proxyInner other)
+        Right c -> gmapAll (finr proxyOuter) (f c)
     proxyInner :: Proxy cs'
     proxyInner = Proxy
     proxyOuter :: Proxy ocs
@@ -556,44 +556,44 @@ forsOn_ n node f = forsAll node body
 -- | Substitute each attempt to communicate on a specified channel
 -- with a computation with a different open channel.
 --
--- The primary difference from 'forsOn' is that the new channel is
+-- The primary difference from 'gforOn' is that the new channel is
 -- substituted for the old one, instead of being appended at the end,
 -- which makes this function more suitable for per-channel
 -- transformations.
 --
 -- ====__Signatures for some specific indices__
 -- @
--- 'forsOnLeaf' 'i0' ::
+-- 'gforOnLeaf' 'i0' ::
 --       ('Functor' m, 'Functor' c, 'Functor' c', 'All' 'Functor' cs)
 --    => 'Node' (c : cs) m r
 --    -> (forall x. c x -> 'Leaf' c' m x)
 --    -> 'Node' (c' : cs) m r
 --
--- 'forsOnLeaf' 'i1' ::
+-- 'gforOnLeaf' 'i1' ::
 --       ('Functor' m, 'Functor' c0, 'Functor' c1, 'Functor' c', 'All' 'Functor' cs)
 --    => 'Node' (c0 : c1 : cs) m r
 --    -> (forall x. c1 x -> 'Leaf' c' m x)
 --    -> 'Node' (c0 : c' : cs) m r
 --
--- 'forsOnLeaf' 'i2' ::
+-- 'gforOnLeaf' 'i2' ::
 --       ( 'Functor' m, 'Functor' c0, 'Functor' c1, 'Functor' c2, 'Functor' c'
 --       , 'All' 'Functor' cs)
 --    => 'Node' (c0 : c1 : c2 : cs) m r
 --    -> (forall x. c2 x -> 'Leaf' c' m x)
 --    -> 'Node' (c0 : c1 : c' : cs) m r
 -- @
-forsOnLeaf ::
+gforOnLeaf ::
      forall m n cs cs' c' r c.
      (Functor m, All Functor cs, Functor c', Replace n cs c' cs')
   => IIndex n cs c -- ^ A channel over which to loop.
   -> Node cs m r -- ^ A source of communication requests to loop over.
   -> (forall x. c x -> Leaf c' m x) -- ^ Loop body.
   -> Node cs' m r
-forsOnLeaf n node f =
-  forsOnLeaf_ n node f \\
+gforOnLeaf n node f =
+  gforOnLeaf_ n node f \\
   ireplacedRetainsAll (Proxy :: Proxy c') (Proxy :: Proxy Functor) n
 
-forsOnLeaf_ ::
+gforOnLeaf_ ::
      forall m n cs c' cs' r c.
      ( Functor m
      , All Functor cs
@@ -605,18 +605,18 @@ forsOnLeaf_ ::
   -> Node cs m r
   -> (forall x. c x -> Leaf c' m x)
   -> Node cs' m r
-forsOnLeaf_ n node f = forsAll node body
+gforOnLeaf_ n node f = gforAll node body
   where
     body con =
       case fdecompReplaceIdx n (Proxy :: Proxy c') con of
-        Left c -> connects c
-        Right c -> mapsAll (finjectIdx newIdx . fsumOnly) (f c)
+        Left c -> connect c
+        Right c -> gmapAll (finjectIdx newIdx . fsumOnly) (f c)
     newIdx = replaceIdx n
 
 -- | Loop over a 'Node', replacing each 'yieldOn' the specified
 -- channel with a computation with a different list of channels.
 --
--- This is merely a specialisation of 'forsOn' for 'Yielding'.
+-- This is merely a specialisation of 'gforOn' for 'Yielding'.
 --
 -- ====__Signatures for some specific indices__
 -- @
@@ -654,7 +654,7 @@ forOn ::
   -> Node cs m r -- ^ A source of values to loop over.
   -> (a -> Node cs' m ()) -- ^ Loop body.
   -> Node rescs m r
-forOn n node f = forsOn n node (\(a, r) -> r <$ f a)
+forOn n node f = gforOn n node (\(a, r) -> r <$ f a)
 
 -- | Same as 'forOn', but new channel is substituted in-place for the
 -- old one.
@@ -685,23 +685,23 @@ forOnLeaf ::
   -> Node cs m r -- ^ A source of values to loop over.
   -> (a -> Leaf c m ()) -- ^ Loop body.
   -> Node cs' m r
-forOnLeaf n node f = forsOnLeaf n node (\(a, r) -> r <$ f a)
+forOnLeaf n node f = gforOnLeaf n node (\(a, r) -> r <$ f a)
 
 -- | Loop over a 'Node', replacing each 'awaitOn' the specified
 -- channel by the loop body, which should provide the value asked for.
 --
--- This is merely a specialisation of 'forsOn' for 'Awaiting'.
+-- This is merely a specialisation of 'gforOn' for 'Awaiting'.
 --
 -- ====__Signatures for some specific indices__
 -- @
--- 'preforOn' 'i0' ::
+-- 'contraforOn' 'i0' ::
 --       ( 'Functor' 'm', 'All' 'Functor' cs, 'All' 'Functor' cs'
 --       , 'Known' 'Length' cs)
 --    => 'Node' ('Awaiting' a : cs) m r
 --    -> 'Node' cs' m a
 --    -> 'Node' (cs 'Type.Family.List.++' cs') m r
 --
--- 'preforOn' 'i1' ::
+-- 'contraforOn' 'i1' ::
 --       ( 'Functor' 'm', 'Functor' c0
 --       , 'All' 'Functor' cs, 'All' 'Functor' cs'
 --       , 'Known' 'Length' cs)
@@ -709,7 +709,7 @@ forOnLeaf n node f = forsOnLeaf n node (\(a, r) -> r <$ f a)
 --    -> 'Node' cs' m a
 --    -> 'Node' ((c0 : cs) 'Type.Family.List.++' cs') m r
 --
--- 'preforOn' 'i2' ::
+-- 'contraforOn' 'i2' ::
 --       ( 'Functor' 'm', 'Functor' c0, 'Functor' c1
 --       , 'All' 'Functor' cs, 'All' 'Functor' cs'
 --       , 'Known' 'Length' cs)
@@ -717,7 +717,7 @@ forOnLeaf n node f = forsOnLeaf n node (\(a, r) -> r <$ f a)
 --    -> 'Node' cs' m a
 --    -> 'Node' ((c0 : c1 : cs) 'Type.Family.List.++' cs') m r
 -- @
-preforOn ::
+contraforOn ::
      ( Remove n cs ocs
      , Functor m
      , All Functor cs'
@@ -729,38 +729,38 @@ preforOn ::
   -> Node cs' m a -- ^ A provider of values, run once for each
                   -- 'awaitOn'.
   -> Node rescs m r
-preforOn n node body = forsOn n node (<$> body)
+contraforOn n node body = gforOn n node (<$> body)
 
--- | Same as 'preforOn', but new channel is substituted in-place for the
+-- | Same as 'contraforOn', but new channel is substituted in-place for the
 -- old one.
 --
 -- ====__Signatures for some specific indices__
 -- @
--- 'preforOnLeaf' 'i0' ::
+-- 'contraforOnLeaf' 'i0' ::
 --       ('Functor' m, 'Functor' c, 'All' 'Functor' cs)
 --    => 'Node' ('Awaiting' a : cs) m r
 --    -> 'Leaf' c m a
 --    -> 'Node' (c : cs) m r
 --
--- 'preforOnLeaf' 'i1' ::
+-- 'contraforOnLeaf' 'i1' ::
 --       ('Functor' m, 'Functor' c0, 'Functor' c, 'All' 'Functor' cs)
 --    => 'Node' (c0 : 'Awaiting' a : cs) m r
 --    -> 'Leaf' c m a
 --    -> 'Node' (c0 : c : cs) m r
 --
--- 'preforOnLeaf' 'i2' ::
+-- 'contraforOnLeaf' 'i2' ::
 --       ('Functor' m, 'Functor' c0, 'Functor' c1, 'Functor' c, 'All' 'Functor' cs)
 --    => 'Node' (c0 : c1 : 'Awaiting' a : cs) m r
 --    -> 'Leaf' c m a
 --    -> 'Node' (c0 : c1 : c : cs) m r
 -- @
-preforOnLeaf ::
+contraforOnLeaf ::
      (Functor m, All Functor cs, Functor c, Replace n cs c cs')
   => IIndex n cs (Awaiting a) -- ^ A channel over which to loop.
   -> Node cs m r -- ^ A receiver of values.
   -> Leaf c m a -- ^ A provider of values, run once for each 'awaitOn'.
   -> Node cs' m r
-preforOnLeaf n node body = forsOnLeaf n node (<$> body)
+contraforOnLeaf n node body = gforOnLeaf n node (<$> body)
 
 -- $indices
 --

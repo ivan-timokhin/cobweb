@@ -15,7 +15,7 @@ Here, each connection represents a single substream.
 
 Unfortunately, this means that such nested streams can no longer be
 linked together via "Cobweb.Link", and need to be processed via
-functor-generic functions (e.g. 'forsOn') or functions in this module.
+functor-generic functions (e.g. 'gforOn') or functions in this module.
 -}
 {-# OPTIONS_HADDOCK show-extensions #-}
 {-# LANGUAGE BangPatterns #-}
@@ -41,7 +41,7 @@ import Control.Monad.Trans (lift)
 import GHC.Stack (HasCallStack)
 
 import qualified Cobweb.Consumer as C
-import Cobweb.Core (Leaf, Producer, forsOn, i0, yieldOn)
+import Cobweb.Core (Leaf, Producer, gforOn, i0, yieldOn)
 import Cobweb.Internal (Node(Connect, Effect, Return))
 import qualified Cobweb.Producer as P
 import Cobweb.Type.Combinators (FSum(FInL), fsumOnly)
@@ -117,10 +117,10 @@ group = groupBy (==)
 -- this module.
 --
 -- @
--- 'Cobweb.Group.concat' node = 'forsOn' 'i0' node 'id'
+-- 'Cobweb.Group.concat' node = 'gforOn' 'i0' node 'id'
 -- @
 concat :: (Functor c, Functor m) => Leaf (Leaf c m) m r -> Leaf c m r
-concat node = forsOn i0 node id
+concat node = gforOn i0 node id
 
 -- | Concatenate substreams together, inserting separator between
 -- them.  A moral equivalent of 'Data.List.intercalate'.
@@ -136,7 +136,7 @@ intercalate separator = loop
     loop (Effect eff) = Effect (fmap loop eff)
     loop (Connect con) = fsumOnly con >>= loop'
     loop' :: Leaf (Leaf c m) m r -> Leaf c m r
-    loop' node = forsOn i0 node (separator >>)
+    loop' node = gforOn i0 node (separator >>)
 
 -- | Fold contents of each chunk individually, and stream results.
 --
@@ -160,7 +160,7 @@ foldChunks ::
   -> Leaf (Leaf c m) m r
   -> Producer a m r
 foldChunks reducer node =
-  forsOn i0 node $ \chunk -> do
+  gforOn i0 node $ \chunk -> do
     (a, x) <- lift $ reducer chunk
     yieldOn i0 a
     pure x

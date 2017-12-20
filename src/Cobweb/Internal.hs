@@ -258,7 +258,7 @@ unsafeHoist f = cata Return Connect (Effect . f)
 --
 -- Due to type-specialised nature of the transformation function, this
 -- function is more flexible (but also less safe!) than the similar
--- 'Cobweb.Core.mapsAll'.
+-- 'Cobweb.Core.gmapAll'.
 transformCons ::
      (Functor m, Inductive cs, All Functor cs)
   => (FSum cs (Node cs' m r) -> FSum cs' (Node cs' m r))

@@ -22,7 +22,7 @@ possible to fuse them together via "Cobweb.Fuse", but that won't
 recover original channel).
 
 Note also that, unlike "Cobweb.Zip", this module does not provide
-functor-generic functions; 'Cobweb.Core.forsOn' is strictly more
+functor-generic functions; 'Cobweb.Core.gforOn' is strictly more
 general, and allows easier specification of exact desired semantics.
 -}
 {-# OPTIONS_HADDOCK show-extensions #-}

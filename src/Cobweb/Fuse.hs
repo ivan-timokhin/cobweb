@@ -40,7 +40,7 @@ module Cobweb.Fuse
   ( fuse
   , fuseWith
   , fuseWithMap
-  , fuseWithPremap
+  , fuseWithContramap
   , fuseAll
   ) where
 
@@ -48,7 +48,7 @@ import Data.Bifunctor (first)
 import Data.Type.Equality ((:~:), type (==))
 import Type.Class.Known (Known)
 
-import Cobweb.Core (Awaiting, Leaf, Yielding, mapsAll)
+import Cobweb.Core (Awaiting, Leaf, Yielding, gmapAll)
 import Cobweb.Internal (Node)
 import Cobweb.Type.Combinators
        (Inductive, All, FSum(FInL), IIndex, Remove, Replace, fuseSum, fuseSumAll,
@@ -129,7 +129,7 @@ fuse ::
                    -- kept).
   -> Node cs m r
   -> Node cs' m r
-fuse n k = mapsAll (fuseSum n k)
+fuse n k = gmapAll (fuseSum n k)
 
 -- | Given a way to transform two different channels of a 'Node' into
 -- a common form, fuse them together at the location of the second
@@ -157,7 +157,7 @@ fuseWith ::
                     -- is replaced).
   -> Node cs m r
   -> Node cs'' m r
-fuseWith f g n k = mapsAll (fuseSumWith f g n k)
+fuseWith f g n k = gmapAll (fuseSumWith f g n k)
 
 -- | A specialisation of 'fuseWith' for 'Yielding' channels.
 fuseWithMap ::
@@ -176,7 +176,7 @@ fuseWithMap ::
 fuseWithMap f g = fuseWith (first f) (first g)
 
 -- | A specialisation of 'fuseWith' for 'Awaiting' channels.
-fuseWithPremap ::
+fuseWithContramap ::
      ( (n == k) ~ 'False
      , All Functor cs
      , Replace k cs (Awaiting c) cs'
@@ -189,7 +189,7 @@ fuseWithPremap ::
   -> IIndex k cs (Awaiting b) -- ^ Index of the replaced channel.
   -> Node cs m r
   -> Node cs'' m r
-fuseWithPremap f g = fuseWith (. f) (. g)
+fuseWithContramap f g = fuseWith (. f) (. g)
 
 -- | Given a 'Node' with /all/ channels identical, fuse them all
 -- together.
@@ -197,4 +197,4 @@ fuseAll ::
      (All (Known ((:~:) c)) cs, All Functor cs, Inductive cs, Functor m)
   => Node cs m r
   -> Leaf c m r
-fuseAll = mapsAll (FInL . fuseSumAll)
+fuseAll = gmapAll (FInL . fuseSumAll)

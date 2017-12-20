@@ -22,8 +22,8 @@ module Cobweb.Consumer
   , await
   , drain
   , discard
-  , premap
-  , prefor
+  , contramap
+  , contrafor
   , nextRequest
   , consumeOn
   , splitAt
@@ -36,7 +36,7 @@ import Control.Monad.Trans (lift)
 
 import Cobweb.Core
        (Awaiting, Consumer, Leaf, Node, awaitOn, i0, inspectLeaf, leafOn,
-        preforOn, premapOn)
+        contraforOn, contramapOn)
 import Cobweb.Internal (Node(Connect, Effect, Return))
 import Cobweb.Type.Combinators (Inductive, All, IIndex)
 
@@ -78,19 +78,19 @@ discard :: Applicative f => a -> f ()
 discard = const (pure ())
 
 -- | Apply a function to all incoming values.
-premap :: Functor m => (b -> a) -> Consumer a m r -> Consumer b m r
-premap = premapOn i0
+contramap :: Functor m => (b -> a) -> Consumer a m r -> Consumer b m r
+contramap = contramapOn i0
 
 -- | Loop over a consumer.
 --
 -- Each time the consumer 'await's, second argument is run to
 -- determine the value that the consumer will receive.
-prefor ::
+contrafor ::
      (All Functor cs, Inductive cs, Functor m)
   => Consumer a m r -- ^ Consumer of values.
   -> Node cs m a -- ^ Provider of values.
   -> Node cs m r
-prefor = preforOn i0
+contrafor = contraforOn i0
 
 -- | Run a 'Consumer' until it either terminates, or requests a value
 -- to continue.
