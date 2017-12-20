@@ -18,43 +18,95 @@ import Data.Functor.Identity (Identity(runIdentity))
 benchSum :: Int -> Benchmark
 benchSum n =
   bgroup
-      -- This benchmark in /incredibly/ fishy.  Brief inspection of
-      -- Core and/or list of fired rewrite rules shows that
-      -- build/foldr fusion happens in 'sumW' and 'sumL' and NOWHERE
-      -- ELSE (maybe sumC, but I don't quite understand what's
-      -- happening there).  This is especially mysterious in case of
-      -- @machines@, where the generated list literally lives and dies
-      -- within the library, and yet makes it into the Core.  This
-      -- creeps me out, but I have no idea of how to fix that.
     "sum"
-    [ bench "cobweb" $ whnf sumW n
-    , bench "conduit" $ whnf sumC n
-    , bench "pipes" $ whnf sumP n
-    , bench "machines" $ whnf sumM n
-    , bench "streaming" $ whnf sumS n
-    , bench "list" $ whnf sumL n
+    [ bgroup
+        "fusion"
+        [ bench "cobweb" $ whnf sumW n
+        , bench "conduit" $ whnf sumC n
+        , bench "pipes" $ whnf sumP n
+        , bench "machines" $ whnf sumM n
+        , bench "streaming" $ whnf sumS n
+        , bench "list" $ whnf sumL n
+        ]
+    , bgroup
+        "no fusion"
+        [ bench "cobweb" $ whnf sumW' n
+        , bench "conduit" $ whnf sumC' n
+        , bench "pipes" $ whnf sumP' n
+        , bench "machines" $ whnf sumM' n
+        , bench "streaming" $ whnf sumS' n
+        , bench "list" $ whnf sumL' n
+        ]
     ]
 
 sumW :: Int -> Int
 {-# NOINLINE sumW #-}
 sumW n = runIdentity $ W.foldNode_ (+) 0 id (W.each [1 .. n])
 
+producerW :: Int -> W.Producer Int Identity ()
+{-# NOINLINE producerW #-}
+producerW n = W.each [1..n]
+
+sumW' :: Int -> Int
+{-# NOINLINE sumW' #-}
+sumW' n = runIdentity $ W.foldNode_ (+) 0 id (producerW n)
+
 sumC :: Int -> Int
 {-# NOINLINE sumC #-}
 sumC n = C.runConduitPure $ C.enumFromTo 1 n C..| C.fold (+) 0
+
+producerC :: Int -> C.ConduitM i Int Identity ()
+{-# NOINLINE producerC #-}
+producerC = C.enumFromTo 1
+
+sumC' :: Int -> Int
+{-# NOINLINE sumC' #-}
+sumC' n = C.runConduitPure $ producerC n C..| C.fold (+) 0
 
 sumP :: Int -> Int
 {-# NOINLINE sumP #-}
 sumP n = runIdentity $ P.fold (+) 0 id (P.each [1 .. n])
 
+producerP :: Int -> P.Producer Int Identity ()
+{-# NOINLINE producerP #-}
+producerP n = P.each [1 .. n]
+
+sumP' :: Int -> Int
+{-# NOINLINE sumP' #-}
+sumP' n = runIdentity $ P.fold (+) 0 id (producerP n)
+
 sumM :: Int -> Int
 {-# NOINLINE sumM #-}
 sumM n = runIdentity $ M.foldlT (+) 0 (M.enumerateFromTo 1 n)
+
+producerM :: Int -> M.MachineT Identity k Int
+{-# NOINLINE producerM #-}
+producerM = M.enumerateFromTo 1
+
+sumM' :: Int -> Int
+{-# NOINLINE sumM' #-}
+sumM' n = runIdentity $ M.foldlT (+) 0 (producerM n)
 
 sumS :: Int -> Int
 {-# NOINLINE sumS #-}
 sumS n = runIdentity $ S.fold_ (+) 0 id (S.each [1 .. n])
 
+producerS :: Int -> S.Stream (S.Of Int) Identity ()
+{-# NOINLINE producerS #-}
+producerS n = S.each [1 .. n]
+
+sumS' :: Int -> Int
+{-# NOINLINE sumS' #-}
+sumS' n = runIdentity $ S.fold_ (+) 0 id (producerS n)
+
 sumL :: Int -> Int
 {-# NOINLINE sumL #-}
 sumL n = L.foldl' (+) 0 [1 .. n]
+
+producerL :: Int -> [Int]
+{-# NOINLINE producerL #-}
+producerL n = [1 .. n]
+
+sumL' :: Int -> Int
+{-# NOINLINE sumL' #-}
+sumL' n = L.foldl' (+) 0 (producerL n)
