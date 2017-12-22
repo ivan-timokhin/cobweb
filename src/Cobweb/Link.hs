@@ -352,7 +352,15 @@ linkOn ::
   -> Node rescs m r
 {-# INLINE linkOn #-}
 linkOn n k =
-  genericLinkOn (fmap Identity) Identity (finl proxyR) (finr proxyL) n k .
+  genericLinkOn
+    annihilate
+    annihilate
+    (fmap Identity)
+    Identity
+    (finl proxyR)
+    (finr proxyL)
+    n
+    k .
   Identity
   where
     proxyR = Proxy :: Proxy rcs'
@@ -382,7 +390,15 @@ linkOn' ::
   -> Node rescs m r
 {-# INLINE linkOn' #-}
 linkOn' n k =
-  genericLinkOn (fmap Identity) Identity (finr proxyR) (finl proxyL) n k .
+  genericLinkOn
+    annihilate
+    annihilate
+    (fmap Identity)
+    Identity
+    (finr proxyR)
+    (finl proxyL)
+    n
+    k .
   Identity
   where
     proxyR = Proxy :: Proxy rcs'
@@ -674,7 +690,14 @@ linkOnDuplex ::
   -> Node rcs m r -- ^ ‘Client’ node.
   -> Node rescs m r
 {-# INLINE linkOnDuplex #-}
-linkOnDuplex = genericLinkOn getCompose getCompose (finl proxyR) (finr proxyL)
+linkOnDuplex =
+  genericLinkOn
+    annihilate
+    annihilate
+    getCompose
+    getCompose
+    (finl proxyR)
+    (finr proxyL)
   where
     proxyR :: Proxy rcs'
     proxyR = Proxy
@@ -699,7 +722,14 @@ linkOnDuplex' ::
   -> Node rcs m r -- ^ ‘Client’ node.
   -> Node rescs m r
 {-# INLINE linkOnDuplex' #-}
-linkOnDuplex' = genericLinkOn getCompose getCompose (finr proxyR) (finl proxyL)
+linkOnDuplex' =
+  genericLinkOn
+    annihilate
+    annihilate
+    getCompose
+    getCompose
+    (finr proxyR)
+    (finl proxyL)
   where
     proxyR :: Proxy rcs'
     proxyR = Proxy
@@ -710,12 +740,10 @@ linkOnDuplex' = genericLinkOn getCompose getCompose (finr proxyR) (finl proxyL)
 -- function in this module.  Calling it directly is practically never
 -- needed.
 genericLinkOn ::
-     ( Remove n lcs lcs'
-     , Remove k rcs rcs'
-     , Annihilate lreq rresp
-     , Annihilate rreq lresp
-     )
-  => (forall x. lc x -> lresp (lreq x)) -- ^ Convert the channel on
+     (Functor rreq, Functor lreq, Remove n lcs lcs', Remove k rcs rcs')
+  => (forall x y. lreq x -> rresp y -> (x, y))
+  -> (forall x y. rreq x -> lresp y -> (x, y))
+  -> (forall x. lc x -> lresp (lreq x)) -- ^ Convert the channel on
      -- the first node to a duplex representation.
   -> (forall x. rc x -> rresp (rreq x)) -- ^ Convert the channel on
      -- the second node to a duplex representation.
@@ -731,7 +759,7 @@ genericLinkOn ::
   -> Node rcs m a
   -> Node rescs m a
 {-# INLINE genericLinkOn #-}
-genericLinkOn ldecompose rdecompose lembed rembed n k =
+genericLinkOn lannihilate rannihilate ldecompose rdecompose lembed rembed n k =
   \l r ->
     build
       (\ret con lft ->
@@ -742,7 +770,7 @@ genericLinkOn ldecompose rdecompose lembed rembed n k =
                     case fdecompIdx k cs of
                       Left other -> con (rembed other) (loop left . cont)
                       Right c ->
-                        case annihilate left (rdecompose c) of
+                        case lannihilate left (rdecompose c) of
                           (left', right') -> loop' (fmap cont right') left')
                  (\e cont -> lft e (loop left . cont))
              loop' right =
@@ -752,7 +780,7 @@ genericLinkOn ldecompose rdecompose lembed rembed n k =
                     case fdecompIdx n cs of
                       Left other -> con (lembed other) (loop' right . cont)
                       Right c ->
-                        case annihilate right (ldecompose c) of
+                        case rannihilate right (ldecompose c) of
                           (right', left') -> loop (fmap cont left') right')
                  (\e cont -> lft e (loop' right . cont))
          in loop l r)
