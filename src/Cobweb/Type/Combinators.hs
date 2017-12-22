@@ -68,7 +68,6 @@ module Cobweb.Type.Combinators
   , fuseSumWith
   , fuseSumAll
     -- * Type synonyms
-  , All
   , AllEqual
   ) where
 
@@ -77,7 +76,7 @@ import Data.Kind (Constraint)
 import Data.Type.Equality ((:~:)(Refl), type (==))
 import Data.Type.Index (Index(IS, IZ))
 import Data.Type.Length (Length(LS, LZ))
-import Type.Family.List (type (<$>), Last, ListC, Null)
+import Type.Family.List (Last, Null)
 import Type.Family.Nat
   ( Len
   , N(S, Z)
@@ -106,9 +105,6 @@ data FSum (fs :: [k -> *]) (a :: k) where
 absurdFSum :: FSum '[] a -> b
 {-# INLINE absurdFSum #-}
 absurdFSum x = case x of {}
-
-instance (Inductive fs, All Functor fs) => Functor (FSum fs) where
-  fmap = mapI
 
 -- | A value of type @'IIndex' n as a@ is a witness of a fact that the
 -- list @as@ contains element @a@ at position @n@; see 'i0' and others
@@ -269,7 +265,6 @@ instance Append as bs cs => Append (a : as) bs (a : cs) where
 -- list.  All finite lists are instances of this class, so it doesn't
 -- actually constrain anything.
 class Inductive (fs :: [* -> *]) where
-  mapI :: All Functor fs => (a -> b) -> FSum fs a -> FSum fs b
   lengthI :: Length fs
   lastIdxI ::
        Length fs -> Either (fs :~: '[]) (IIndex (Pred (Len fs)) fs (Last fs))
@@ -311,8 +306,6 @@ class Inductive (fs :: [* -> *]) where
   fuseSumAllI :: (fs `AllEqual` f) => FSum fs a -> f a
 
 instance Inductive '[] where
-  mapI _ = absurdFSum
-  {-# INLINE mapI #-}
   lengthI = LZ
   {-# INLINE lengthI #-}
   lastIdxI _ = Left Refl
@@ -341,9 +334,6 @@ instance Inductive '[] where
   {-# INLINE fuseSumAllI #-}
 
 instance Inductive fs => Inductive (f : fs) where
-  mapI f (FInL x) = FInL (fmap f x)
-  mapI f (FInR x) = FInR (mapI f x)
-  {-# INLINE mapI #-}
   lengthI = LS lengthI
   {-# INLINE lengthI #-}
   lastIdxI (LS LZ) = Right IIZ
@@ -617,13 +607,6 @@ fuseSumWith f g n' = fuseSumWithI f g removeW n' replaceW
 fuseSumAll :: (Inductive fs, fs `AllEqual` f) => FSum fs a -> f a
 {-# INLINE fuseSumAll #-}
 fuseSumAll = fuseSumAllI
-
--- | An analogue of 'all' for type-level lists.
---
--- Constraint @'All' f as@ means that all elements of the type-level
--- list @as@ should satisfy the constraint @f@; e.g. @'All' 'Functor'
--- fs@ means that all elements of @fs@ should be functors.
-type All f as = ListC (f <$> as)
 
 -- | Require that all elements of list @bs@ are equal to @a@.
 type family AllEqual bs a :: Constraint where
