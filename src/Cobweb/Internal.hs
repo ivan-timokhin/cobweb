@@ -38,17 +38,22 @@ channels, with no effects from the base monad required.
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Cobweb.Internal
-  ( Node(Return, Connect, Effect)
+  ( Node
   , cata
+  , build
+  , unconsNode
   , unsafeHoist
-  , transformCons
   , inspect
   , unfold
   , observe
   ) where
 
+import Control.Arrow (Kleisli(Kleisli, runKleisli))
 import Control.Monad (ap, liftM)
 import Control.Monad.Base (MonadBase(liftBase))
 import Control.Monad.Catch (MonadCatch(catch), MonadThrow(throwM))
@@ -57,15 +62,20 @@ import qualified Control.Monad.Fail as Fail
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad.Morph (MFunctor(hoist), MMonad(embed))
 import Control.Monad.Primitive (PrimMonad(PrimState, primitive))
-import Control.Monad.Reader.Class (MonadReader(ask, local, reader))
 import Control.Monad.RWS.Class (MonadRWS)
+import Control.Monad.Reader.Class (MonadReader(ask, local, reader))
 import Control.Monad.State.Class (MonadState(get, put, state))
 import Control.Monad.Trans (MonadTrans(lift))
 import Control.Monad.Trans.Resource (MonadResource(liftResourceT))
 import Control.Monad.Writer.Class
-       (MonadWriter(listen, pass, tell, writer), censor)
+  ( MonadWriter(listen, pass, tell, writer)
+  , censor
+  )
+import Data.Functor.Coyoneda (Coyoneda(Coyoneda))
+import Data.Functor.Sum (Sum(InL, InR))
 
-import Cobweb.Type.Combinators (All, FSum, Inductive)
+import Cobweb.Type.Combinators (FSum)
+import Cobweb.Internal.Cat (Cat(Cat, Leaf), (|>), unconsCat)
 
 -- | A monad transformer that extends the underlying monad @m@ with a
 -- capacity to communicate on a list of channels @cs@.
@@ -82,85 +92,118 @@ import Cobweb.Type.Combinators (All, FSum, Inductive)
 -- third.  "Cobweb.Core" provides aliases for these (most common)
 -- channel types: 'Cobweb.Core.Yield' for @(,)@, and
 -- 'Cobweb.Core.Await' for @(->)@.
-data Node cs m r
-  = Return r -- ^ The computation has completed, producing resulting value.
-  | Effect (m (Node cs m r)) -- ^ Invoke effect in the base monad.
-  | Connect (FSum cs (Node cs m r)) -- ^ Initiate communcation on one
-                                    -- of the channels.
+data Node cs m a where
+  Pure :: a -> Node cs m a
+  Impure :: Sum m (FSum cs) x -> Cat (Kleisli (Node cs m)) x a -> Node cs m a
+
+unconsNode ::
+  forall a r cs m.
+     (a -> r)
+  -> (forall x. FSum cs x -> (x -> Node cs m a) -> r)
+  -> (forall x. m x -> (x -> Node cs m a) -> r)
+  -> Node cs m a
+  -> r
+{-# INLINE unconsNode #-}
+unconsNode ret _ _ (Pure a) = ret a
+unconsNode _ con eff (Impure i k) =
+  case i of
+    InL e -> eff e cont
+    InR c -> con c cont
+  where
+    cont = unconsCat runKleisli loop k
+    loop ::
+         Kleisli (Node cs m) y x
+      -> Cat (Kleisli (Node cs m)) x a
+      -> y
+      -> Node cs m a
+    loop kl cat y =
+      case runKleisli kl y of
+        Pure x -> unconsCat runKleisli loop cat x
+        Impure i' cat' -> Impure i' (Cat cat' cat)
 
 -- | Fold a 'Node'
 cata ::
-     (All Functor cs, Inductive cs, Functor m)
-  => (r -> a)
-  -> (FSum cs a -> a)
-  -> (m a -> a)
-  -> Node cs m r
-  -> a
+     forall cs m a r.
+     (a -> r)
+  -> (forall x. FSum cs x -> (x -> r) -> r)
+  -> (forall x. m x -> (x -> r) -> r)
+  -> Node cs m a
+  -> r
 {-# INLINE cata #-}
 cata algR algC algE = loop
   where
-    loop (Return r) = algR r
-    loop (Connect con) = algC (fmap loop con)
-    loop (Effect eff) = algE (fmap loop eff)
+    loop :: Node cs m a -> r
+    loop =
+      unconsNode
+        algR
+        (\c cont -> algC c (loop . cont))
+        (\e cont -> algE e (loop . cont))
 
-instance (All Functor cs, Inductive cs, Functor m) => Functor (Node cs m) where
+buildCon :: FSum cs x -> (x -> Node cs m a) -> Node cs m a
+{-# INLINE buildCon #-}
+buildCon fs = Impure (InR fs) . Leaf . Kleisli
+
+buildEff :: m x -> (x -> Node cs m a) -> Node cs m a
+{-# INLINE buildEff #-}
+buildEff e = Impure (InL e) . Leaf . Kleisli
+
+build ::
+     (forall r.
+         (a -> r)
+      -> (forall x. FSum cs x -> (x -> r) -> r)
+      -> (forall x. m x -> (x -> r) -> r)
+      -> r)
+  -> Node cs m a
+{-# INLINE build #-}
+build f = f Pure buildCon buildEff
+
+instance Functor (Node cs m) where
   fmap = liftM
 
-instance (All Functor cs, Inductive cs, Functor m) =>
-         Applicative (Node cs m) where
-  pure = Return
+instance Applicative (Node cs m) where
+  pure x = build (\ret _ _ -> ret x)
   (<*>) = ap
   (*>) = (>>)
 
-instance (All Functor cs, Inductive cs, Functor m) => Monad (Node cs m) where
+instance Monad (Node cs m) where
   (>>=) = bind_
 
-bind_ ::
-     (All Functor cs, Inductive cs, Functor m)
-  => Node cs m a
-  -> (a -> Node cs m b)
-  -> Node cs m b
+bind_ :: Node cs m a -> (a -> Node cs m b) -> Node cs m b
 {-# INLINE[0] bind_ #-}
-bind_ x f = cata f Connect Effect x
-
-{-# RULES
-"cobweb/bind_/return" forall a f . bind_ (Return a) f = f a
-"cobweb/bind_/connect" forall con f.
-  bind_ (Connect con) f = Connect (fmap (`bind_` f) con)
-"cobweb/bind_/effect" forall eff f.
-  bind_ (Effect eff) f = Effect (fmap (`bind_` f) eff)
- #-}
+bind_ (Pure x) f = f x
+bind_ (Impure x k) f = Impure x (k |> Kleisli f)
 
 instance MonadTrans (Node cs) where
-  lift eff = Effect $ fmap Return eff
+  lift eff = build (\ret _ lft -> lft eff ret)
 
-instance (All Functor cs, Inductive cs, MonadIO m) => MonadIO (Node cs m) where
+instance MonadIO m => MonadIO (Node cs m) where
   liftIO = lift . liftIO
 
-instance (All Functor cs, Inductive cs, Fail.MonadFail m) =>
-         Fail.MonadFail (Node cs m) where
+instance Fail.MonadFail m => Fail.MonadFail (Node cs m) where
   fail = lift . Fail.fail
 
 -- | Lift a @catch@-like function from the base level to 'Node'.
 liftCatch ::
-     (All Functor cs, Inductive cs, Applicative m)
+     Applicative m
   => (m (Node cs m a) -> (e -> m (Node cs m a)) -> m (Node cs m a))
   -> Node cs m a
   -> (e -> Node cs m a)
   -> Node cs m a
 liftCatch catchBase node handler =
-  cata Return Connect (\eff -> Effect $ eff `catchBase` (pure . handler)) node
+  cata
+    Pure
+    buildCon
+    (\eff cont -> buildEff (fmap cont eff `catchBase` (pure . handler)) id)
+    node
 
-instance (All Functor cs, Inductive cs, MonadError e m) =>
-         MonadError e (Node cs m) where
+instance MonadError e m => MonadError e (Node cs m) where
   throwError = lift . throwError
   catchError = liftCatch catchError
 
 -- | This instance is safe only if @'local' f@ in the base monad is a
 -- proper monad morphism (see "Control.Monad.Morph" for details),
 -- which it usually is.
-instance (All Functor cs, Inductive cs, MonadReader r m) =>
-         MonadReader r (Node cs m) where
+instance MonadReader r m => MonadReader r (Node cs m) where
   ask = lift ask
   reader = lift . reader
   -- This relies on `local f` being proper monad morphism… which is
@@ -170,69 +213,69 @@ instance (All Functor cs, Inductive cs, MonadReader r m) =>
 
 -- | Both 'listen' and 'pass' accumulate intermediate results
 -- strictly.
-instance (All Functor cs, Inductive cs, MonadWriter w m) =>
-         MonadWriter w (Node cs m) where
+instance MonadWriter w m => MonadWriter w (Node cs m) where
   writer = lift . writer
   tell = lift . tell
-  listen = loop mempty
-    where
-      loop !m (Return r) = Return (r, m)
-      loop !m (Connect con) = Connect (fmap (loop m) con)
-      loop !m (Effect eff) =
-        Effect $ do
-          (x, w) <- listen eff
-          pure (loop (m `mappend` w) x)
-  pass = loop mempty
-    where
-      loop !m (Return (r, f)) =
-        Effect $ do
-          tell (f m)
-          pure (pure r)
-      loop !m (Connect con) = Connect (fmap (loop m) con)
-      loop !m (Effect eff) =
-        Effect $ do
-          (x, w) <- censor (const mempty) (listen eff)
-          pure (loop (m `mappend` w) x)
+  listen node =
+    build
+      (\ret con lft ->
+         cata
+           (curry ret)
+           (\c cont w -> con c (`cont` w))
+           (\eff cont w ->
+              lft
+                (listen eff)
+                (\(x, w') ->
+                   let !w'' = w `mappend` w'
+                   in cont x w''))
+           node
+           mempty)
+  pass node =
+    build
+      (\ret con lft ->
+         cata
+           (\(a, f) w -> lft (tell (f w)) (const (ret a)))
+           (\c cont w -> con c (`cont` w))
+           (\eff cont w ->
+              lft
+                (censor (const mempty) (listen eff))
+                (\(x, w') ->
+                   let !w'' = w `mappend` w'
+                   in cont x w''))
+           node
+           mempty)
 
-instance (All Functor cs, Inductive cs, MonadState s m) =>
-         MonadState s (Node cs m) where
+instance MonadState s m => MonadState s (Node cs m) where
   get = lift get
   put = lift . put
   state = lift . state
 
-instance (All Functor cs, Inductive cs, MonadRWS r w s m) =>
-         MonadRWS r w s (Node cs m)
+instance MonadRWS r w s m => MonadRWS r w s (Node cs m)
 
-instance (All Functor cs, Inductive cs, MonadBase b m) =>
-         MonadBase b (Node cs m) where
+instance MonadBase b m => MonadBase b (Node cs m) where
   liftBase = lift . liftBase
 
-instance (All Functor cs, Inductive cs, MonadThrow m) =>
-         MonadThrow (Node cs m) where
+instance MonadThrow m => MonadThrow (Node cs m) where
   throwM = lift . throwM
 
-instance (All Functor cs, Inductive cs, MonadCatch m) =>
-         MonadCatch (Node cs m) where
+instance MonadCatch m => MonadCatch (Node cs m) where
   catch = liftCatch catch
 
-instance (All Functor cs, Inductive cs, MonadResource m) =>
-         MonadResource (Node cs m) where
+instance MonadResource m => MonadResource (Node cs m) where
   liftResourceT = lift . liftResourceT
 
-instance (All Functor cs, Inductive cs, PrimMonad m) =>
-         PrimMonad (Node cs m) where
+instance PrimMonad m => PrimMonad (Node cs m) where
   type PrimState (Node cs m) = PrimState m
   primitive = lift . primitive
 
-instance (All Functor cs, Inductive cs) => MFunctor (Node cs) where
+instance MFunctor (Node cs) where
   hoist f = unsafeHoist f . observe
 
-instance (All Functor cs, Inductive cs) => MMonad (Node cs) where
-  embed f = loop
-    where
-      loop (Return r) = Return r
-      loop (Connect con) = Connect (fmap loop con)
-      loop (Effect eff) = f eff >>= loop
+instance MMonad (Node cs) where
+  embed f node =
+    build
+      (\ret con lft ->
+         cata ret con (\eff cont -> cata cont con lft (f eff)) node)
 
 -- | Same as 'hoist', but potentially unsafe when the function passed
 -- is /not/ a proper monad morphism.
@@ -247,48 +290,36 @@ instance (All Functor cs, Inductive cs) => MMonad (Node cs) where
 -- transforming 'Node' in a ‘canonical’ form via 'observe' prior to
 -- passing it to 'unsafeHoist'; this restores the monad transformer
 -- laws, but incurs a performance penalty.
-unsafeHoist ::
-     (All Functor cs, Inductive cs, Functor m)
-  => (forall x. m x -> n x)
-  -> Node cs m r
-  -> Node cs n r
-unsafeHoist f = cata Return Connect (Effect . f)
-
--- | Transform a full communication stack of a 'Node'.
---
--- Due to type-specialised nature of the transformation function, this
--- function is more flexible (but also less safe!) than the similar
--- 'Cobweb.Core.gmapAll'.
-transformCons ::
-     (Functor m, Inductive cs, All Functor cs)
-  => (FSum cs (Node cs' m r) -> FSum cs' (Node cs' m r))
-     -- ^ Transform each communication request.
-  -> Node cs m r
-  -> Node cs' m r
-transformCons f = cata Return (Connect . f) Effect
+unsafeHoist :: (forall x. m x -> n x) -> Node cs m a -> Node cs n a
+unsafeHoist f node = build (\ret con lft -> cata ret con (lft . f) node)
 
 -- | Run the 'Node' until it either completes, or initiates
 -- communication on one of its channels.
-inspect :: Monad m => Node cs m r -> m (Either r (FSum cs (Node cs m r)))
-inspect node =
-  case node of
-    Return r -> pure (Left r)
-    Effect eff -> eff >>= inspect
-    Connect con -> pure (Right con)
+inspect ::
+     Monad m => Node cs m a -> m (Either a (Coyoneda (FSum cs) (Node cs m a)))
+inspect =
+  unconsNode
+    (pure . Left)
+    (\c cont -> pure . Right $ Coyoneda cont c)
+    (\eff cont -> eff >>= (inspect . cont))
 
 -- | Build a 'Node' by unfolding from a seed.
 unfold ::
-     (Functor m, Inductive cs, All Functor cs)
-  => (b -> m (Either r (FSum cs b))) -- ^ Step function; return value
+     (b -> m (Either a (Coyoneda (FSum cs) b))) -- ^ Step function; return value
      -- of 'Left' implies termination, while 'Right' implies
      -- communication request.
   -> b -- ^ Initial seed.
-  -> Node cs m r
-unfold step = loop
-  where
-    loop seed = Effect (fmap loopstep (step seed))
-    loopstep (Left r) = Return r
-    loopstep (Right con) = Connect (fmap loop con)
+  -> Node cs m a
+unfold step seed =
+  build
+    (\ret con lft ->
+       let loop z =
+             lft
+               (step z)
+               (\case
+                  Left a -> ret a
+                  Right (Coyoneda cont c) -> con c (loop . cont))
+       in loop seed)
 
 -- | Transform 'Node' to a ‘canonical’ form, where monad transformer
 -- laws hold structurally.
@@ -302,5 +333,5 @@ unfold step = loop
 -- @
 -- 'observe' = 'unfold' 'inspect'
 -- @
-observe :: (Monad m, All Functor cs, Inductive cs) => Node cs m r -> Node cs m r
+observe :: Monad m => Node cs m r -> Node cs m r
 observe = unfold inspect

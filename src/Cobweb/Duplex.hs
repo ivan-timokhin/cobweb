@@ -52,7 +52,7 @@ import Data.Functor.Compose (Compose(Compose))
 
 import Cobweb.Core
        (Await, Leaf, Node, Tube, Yield, connectOn, gforOn, i0, i1)
-import Cobweb.Type.Combinators (Inductive, All, Append, IIndex, Remove)
+import Cobweb.Type.Combinators (Append, IIndex, Inductive, Remove)
 
 -- | A type of duplex channel, producing values of type @o@ and
 -- awaiting values of type @i@ in response.
@@ -256,12 +256,7 @@ pullProxy fwd bwd = loop
 -- | Iterate over specified duplex channel, replacing calls to
 -- 'requestOn' with the loop body.
 forOnDuplex ::
-     ( Monad m
-     , All Functor cs
-     , All Functor cs'
-     , Remove n cs ocs
-     , Append ocs cs' rescs
-     )
+     (Remove n cs ocs, Append ocs cs' rescs)
   => IIndex n cs (Request a b) -- ^ Index of the channel.
   -> Node cs m r
   -> (a -> Node cs' m b) -- ^ Replacement for 'requestOn'.

@@ -13,6 +13,7 @@ counterparts in "Cobweb.Core"; these are specialised for 'Consumer's.
 -}
 {-# OPTIONS_HADDOCK show-extensions #-}
 {-# OPTIONS_GHC -Wno-missing-import-lists #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
 
@@ -33,12 +34,23 @@ import Prelude hiding (splitAt)
 
 import Control.Monad (forever)
 import Control.Monad.Trans (lift)
+import Data.Functor.Coyoneda (lowerCoyoneda)
 
 import Cobweb.Core
-       (Await, Consumer, Leaf, Node, awaitOn, i0, inspectLeaf, leafOn,
-        contraforOn, contramapOn)
-import Cobweb.Internal (Node(Connect, Effect, Return))
-import Cobweb.Type.Combinators (Inductive, All, IIndex)
+  ( Await
+  , Consumer
+  , Leaf
+  , Node
+  , awaitOn
+  , connect
+  , contraforOn
+  , contramapOn
+  , i0
+  , inspectLeaf
+  , leafOn
+  )
+import Cobweb.Internal (build, unconsNode)
+import Cobweb.Type.Combinators (IIndex, Inductive)
 
 -- | Produce a value on the first channel of a 'Node'.
 --
@@ -78,7 +90,7 @@ discard :: Applicative f => a -> f ()
 discard = const (pure ())
 
 -- | Apply a function to all incoming values.
-contramap :: Functor m => (b -> a) -> Consumer a m r -> Consumer b m r
+contramap :: (b -> a) -> Consumer a m r -> Consumer b m r
 contramap = contramapOn i0
 
 -- | Loop over a consumer.
@@ -86,7 +98,7 @@ contramap = contramapOn i0
 -- Each time the consumer 'await's, second argument is run to
 -- determine the value that the consumer will receive.
 contrafor ::
-     (All Functor cs, Inductive cs, Functor m)
+     Inductive cs
   => Consumer a m r -- ^ Consumer of values.
   -> Node cs m a -- ^ Provider of values.
   -> Node cs m r
@@ -99,7 +111,7 @@ contrafor = contraforOn i0
 -- 'nextRequest' = 'inspectLeaf'
 -- @
 nextRequest :: Monad m => Consumer a m r -> m (Either r (a -> Consumer a m r))
-nextRequest = inspectLeaf
+nextRequest = fmap (fmap lowerCoyoneda) . inspectLeaf
 
 -- | Embed a 'Consumer' into a larger 'Node', by identifying its sole
 -- input channel with a matching one in a larger list.
@@ -122,10 +134,7 @@ nextRequest = inspectLeaf
 --    -> 'Node' (c0 : c1 : 'Await' a : cs) m r
 -- @
 consumeOn ::
-     (Functor m, Inductive cs)
-  => IIndex n cs (Await a)
-  -> Consumer a m r
-  -> Node cs m r
+     Inductive cs => IIndex n cs (Await a) -> Consumer a m r -> Node cs m r
 consumeOn = leafOn
 
 -- | Split the stream before @(n + 1)@th connection, and return the
@@ -139,9 +148,16 @@ consumeOn = leafOn
 -- not so for producers.
 --
 -- See also 'Cobweb.Producer.splitAt'
-splitAt :: (Functor c, Functor m) => Int -> Leaf c m r -> Leaf c m (Leaf c m r)
-splitAt _ (Return r) = Return (pure r)
-splitAt n (Effect eff) = Effect (fmap (splitAt n) eff)
-splitAt n node@(Connect con)
-  | n <= 0 = pure node
-  | otherwise = Connect (fmap (splitAt (n - 1)) con)
+splitAt :: Int -> Leaf c m r -> Leaf c m (Leaf c m r)
+splitAt n node =
+  build
+    (\ret con lft ->
+       let loop !k =
+             unconsNode
+               (ret . pure)
+               (\c cont ->
+                  if k <= 0
+                    then ret (connect c >>= cont)
+                    else con c (loop (k - 1) . cont))
+               (\eff cont -> lft eff (loop k . cont))
+       in loop n node)

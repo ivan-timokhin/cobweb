@@ -33,14 +33,14 @@ import Cobweb.Producer (yield)
 
 -- | Identity pipe, simply forwards the values received to the output
 -- channel.
-cat :: Functor m => Pipe a a m r
+cat :: Pipe a a m r
 cat =
   forever $ do
     x <- await
     yield x
 
 -- | Apply a function to all values passing through.
-mapping :: Functor m => (a -> b) -> Pipe a b m r
+mapping :: (a -> b) -> Pipe a b m r
 {-# INLINE mapping #-}
 mapping f =
   forever $ do
@@ -57,11 +57,11 @@ mappingM f =
     yield b
 
 -- | Let through a specified number of values, then terminate.
-taking :: Functor m => Int -> Pipe a a m ()
+taking :: Int -> Pipe a a m ()
 taking n = replicateM_ n $ await >>= yield
 
 -- | Skip a specified number of values, forward the rest.
-dropping :: Functor m => Int -> Pipe a a m ()
+dropping :: Int -> Pipe a a m ()
 dropping n = do
   replicateM_ n await
   cat

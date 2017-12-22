@@ -50,8 +50,7 @@ import Data.Type.Equality (type (==))
 import Cobweb.Core (Await, Leaf, Yield, gmapAll)
 import Cobweb.Internal (Node)
 import Cobweb.Type.Combinators
-  ( All
-  , AllEqual
+  ( AllEqual
   , FSum(FInL)
   , IIndex
   , Inductive
@@ -130,7 +129,7 @@ import Cobweb.Type.Combinators
 --   -> 'Node' (c0 : c1 : c : cs) m r
 -- @
 fuse ::
-     ((n == k) ~ 'False, Functor m, All Functor cs, Remove n cs cs')
+     ((n == k) ~ 'False, Remove n cs cs')
   => IIndex n cs c -- ^ Index of the first fused channel (this one is
                    -- removed).
   -> IIndex k cs c -- ^ Index of the second fused channel (this one is
@@ -149,12 +148,7 @@ fuse n k = gmapAll (fuseSum n k)
 -- 'fuse' = 'fuseWith' 'id' 'id'
 -- @
 fuseWith ::
-     ( (n == k) ~ 'False
-     , All Functor cs
-     , Replace k cs c' cs'
-     , Remove n cs' cs''
-     , Functor m
-     )
+     ((n == k) ~ 'False, Replace k cs c' cs', Remove n cs' cs'')
   => (forall x. c1 x -> c' x) -- ^ Transform the first channel into a
                               -- common one.
   -> (forall x. c2 x -> c' x) -- ^ Transform the second channel into a
@@ -169,12 +163,7 @@ fuseWith f g n k = gmapAll (fuseSumWith f g n k)
 
 -- | A specialisation of 'fuseWith' for 'Yield' channels.
 fuseWithMap ::
-     ( (n == k) ~ 'False
-     , All Functor cs
-     , Replace k cs (Yield c) cs'
-     , Remove n cs' cs''
-     , Functor m
-     )
+     ((n == k) ~ 'False, Replace k cs (Yield c) cs', Remove n cs' cs'')
   => (a -> c) -- ^ Transform the values on the first channel.
   -> (b -> c) -- ^ Transform the values on the second channel.
   -> IIndex n cs (Yield a) -- ^ Index of the removed channel.
@@ -185,12 +174,7 @@ fuseWithMap f g = fuseWith (first f) (first g)
 
 -- | A specialisation of 'fuseWith' for 'Await' channels.
 fuseWithContramap ::
-     ( (n == k) ~ 'False
-     , All Functor cs
-     , Replace k cs (Await c) cs'
-     , Remove n cs' cs''
-     , Functor m
-     )
+     ((n == k) ~ 'False, Replace k cs (Await c) cs', Remove n cs' cs'')
   => (c -> a) -- ^ Transform the values on the first channel.
   -> (c -> b) -- ^ Transform the values on the second channel.
   -> IIndex n cs (Await a) -- ^ Index of the removed channel.
@@ -201,8 +185,5 @@ fuseWithContramap f g = fuseWith (. f) (. g)
 
 -- | Given a 'Node' with /all/ channels identical, fuse them all
 -- together.
-fuseAll ::
-     (cs `AllEqual` c, All Functor cs, Inductive cs, Functor m)
-  => Node cs m r
-  -> Leaf c m r
+fuseAll :: (cs `AllEqual` c, Inductive cs) => Node cs m r -> Leaf c m r
 fuseAll = gmapAll (FInL . fuseSumAll)

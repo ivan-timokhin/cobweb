@@ -8,7 +8,6 @@ Stability: experimental
 
 -}
 {-# OPTIONS_HADDOCK show-extensions #-}
-{-# LANGUAGE BangPatterns #-}
 module Cobweb.Trans
   ( distribute
     -- * State
@@ -43,8 +42,7 @@ import qualified Control.Monad.Writer.Strict as WS
 import qualified Control.Monad.Writer.Lazy as WL
 
 import Cobweb.Core (Node, connect, gforAll, run)
-import Cobweb.Internal (Node(Connect, Effect, Return), unsafeHoist)
-import Cobweb.Type.Combinators (Inductive, All)
+import Cobweb.Internal (build, cata, unsafeHoist)
 
 -- | Move a single transformer layer from ‘beneath’ the 'Node' to
 -- ‘above’ it.
@@ -53,14 +51,7 @@ import Cobweb.Type.Combinators (Inductive, All)
 -- provided here merely wrap compose 'distribute' with corresponding
 -- transformer-specific functions.
 distribute ::
-     ( Monad m
-     , MonadTrans t
-     , MFunctor t
-     , Monad (t m)
-     , Monad (t (Node cs m))
-     , All Functor cs
-     , Inductive cs
-     )
+     (Monad m, MonadTrans t, MFunctor t, Monad (t m), Monad (t (Node cs m)))
   => Node cs (t m) a -- ^ A 'Node' above a transformer layer.
   -> t (Node cs m) a -- ^ Same 'Node' beneath a transformer layer.
 distribute node
@@ -77,107 +68,67 @@ distribute node
  = run $ gforAll (unsafeHoist (hoist lift) node) (lift . lift . connect)
 
 -- | Run 'SS.StateT', returning both final state and result.
-runStateN ::
-     (Monad m, All Functor cs, Inductive cs)
-  => Node cs (SS.StateT s m) a
-  -> s
-  -> Node cs m (a, s)
+runStateN :: Monad m => Node cs (SS.StateT s m) a -> s -> Node cs m (a, s)
 runStateN = SS.runStateT . distribute
 
 -- | Run 'SS.StateT', returning only the result.
-evalStateN ::
-     (Monad m, All Functor cs, Inductive cs)
-  => Node cs (SS.StateT s m) a
-  -> s
-  -> Node cs m a
+evalStateN :: Monad m => Node cs (SS.StateT s m) a -> s -> Node cs m a
 evalStateN = SS.evalStateT . distribute
 
 -- | Run 'SS.StateT', returning only the final state.
-execStateN ::
-     (Monad m, All Functor cs, Inductive cs)
-  => Node cs (SS.StateT s m) a
-  -> s
-  -> Node cs m s
+execStateN :: Monad m => Node cs (SS.StateT s m) a -> s -> Node cs m s
 execStateN = SS.execStateT . distribute
 
 -- | Run 'SL.StateT', returning both final state and result.
-runLazyStateN ::
-     (Monad m, All Functor cs, Inductive cs)
-  => Node cs (SL.StateT s m) a
-  -> s
-  -> Node cs m (a, s)
+runLazyStateN :: Monad m => Node cs (SL.StateT s m) a -> s -> Node cs m (a, s)
 runLazyStateN = SL.runStateT . distribute
 
 -- | Run 'SL.StateT', returning only the result.
-evalLazyStateN ::
-     (Monad m, All Functor cs, Inductive cs)
-  => Node cs (SL.StateT s m) a
-  -> s
-  -> Node cs m a
+evalLazyStateN :: Monad m => Node cs (SL.StateT s m) a -> s -> Node cs m a
 evalLazyStateN = SL.evalStateT . distribute
 
 -- | Run 'SL.StateT', returning only the final state.
-execLazyStateN ::
-     (Monad m, All Functor cs, Inductive cs)
-  => Node cs (SL.StateT s m) a
-  -> s
-  -> Node cs m s
+execLazyStateN :: Monad m => Node cs (SL.StateT s m) a -> s -> Node cs m s
 execLazyStateN = SL.execStateT . distribute
 
 -- | Run 'R.ReaderT' underneath the 'Node'
-runReaderN ::
-     (Monad m, All Functor cs, Inductive cs)
-  => Node cs (R.ReaderT r m) a
-  -> r
-  -> Node cs m a
+runReaderN :: Monad m => Node cs (R.ReaderT r m) a -> r -> Node cs m a
 runReaderN = R.runReaderT . distribute
 
 -- | Run 'E.ExceptT', returning either the error, or the result.
-runExceptN ::
-     (Monad m, All Functor cs, Inductive cs)
-  => Node cs (E.ExceptT e m) a
-  -> Node cs m (Either e a)
+runExceptN :: Monad m => Node cs (E.ExceptT e m) a -> Node cs m (Either e a)
 runExceptN = E.runExceptT . distribute
 
 -- | Run 'WS.WriterT', returning both the value and the output.
-runWriterN ::
-     (Monoid w, Monad m, All Functor cs, Inductive cs)
-  => Node cs (WS.WriterT w m) a
-  -> Node cs m (a, w)
-runWriterN = loop mempty
-  where
-    loop !w (Return a) = Return (a, w)
-    loop !w (Connect con) = Connect (fmap (loop w) con)
-    loop !w (Effect eff) =
-      Effect $ do
-        (eff', !w') <- WS.runWriterT eff
-        let !w'' = w `mappend` w'
-        pure $ loop w'' eff'
+runWriterN :: Monoid w => Node cs (WS.WriterT w m) a -> Node cs m (a, w)
+runWriterN node =
+  build
+    (\ret con lft ->
+       cata
+         (curry ret)
+         (\c cont w -> con c (`cont` w))
+         (\e cont w ->
+            lft (WS.runWriterT e) (\(x, w') -> cont x (w `mappend` w')))
+         node
+         mempty)
 
 -- | Run 'WS.WriterT', returning only the output.
-execWriterN ::
-     (Monoid w, Monad m, All Functor cs, Inductive cs)
-  => Node cs (WS.WriterT w m) a
-  -> Node cs m w
+execWriterN :: Monoid w => Node cs (WS.WriterT w m) a -> Node cs m w
 execWriterN = fmap snd . runWriterN
 
 -- | Run 'WL.WriterT', returning both the value and the output.
-runLazyWriterN ::
-     (Monoid w, Monad m, All Functor cs, Inductive cs)
-  => Node cs (WL.WriterT w m) a
-  -> Node cs m (a, w)
-runLazyWriterN = loop mempty
-  where
-    loop w (Return a) = Return (a, w)
-    loop w (Connect con) = Connect (fmap (loop w) con)
-    loop w (Effect eff) =
-      Effect $ do
-        (eff', w') <- WL.runWriterT eff
-        pure $ loop (w `mappend` w') eff'
+runLazyWriterN :: Monoid w => Node cs (WL.WriterT w m) a -> Node cs m (a, w)
+runLazyWriterN node =
+  build
+    (\ret con lft ->
+       cata
+         (curry ret)
+         (\c cont w -> con c (`cont` w))
+         (\e cont w ->
+            lft (WL.runWriterT e) (\ ~(x, w') -> cont x (w `mappend` w')))
+         node
+         mempty)
 
 -- | Run 'WL.WriterT', returning both the value and the output.
-execLazyWriterN ::
-     (Monoid w, Monad m, All Functor cs, Inductive cs)
-  => Node cs (WL.WriterT w m) a
-  -> Node cs m w
+execLazyWriterN :: Monoid w => Node cs (WL.WriterT w m) a -> Node cs m w
 execLazyWriterN = fmap snd . runLazyWriterN

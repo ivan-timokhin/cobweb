@@ -55,10 +55,20 @@ import Type.Family.Nat (Len, Pred)
 import Data.Functor.Sum (Sum(InL, InR))
 import Data.Functor.Product (Product(Pair))
 
-import Cobweb.Internal (Node(Connect, Effect, Return))
+import Cobweb.Internal (Node, unconsNode, build)
 import Cobweb.Type.Combinators
-       (All, Append, FSum, IIndex, Remove, RemoveW, fdecompIdx, finl,
-        finr, i0, lastIndex, removeW)
+  ( Append
+  , FSum
+  , IIndex
+  , Remove
+  , RemoveW
+  , fdecompIdx
+  , finl
+  , finr
+  , i0
+  , lastIndex
+  , removeW
+  )
 import Cobweb.Type.Lemmata (removeNonEmpty)
 
 -- The functional dependency on Annihilate is very annoying, but in
@@ -190,11 +200,8 @@ instance (Annihilate f1 g1, Annihilate f2 g2) =>
 (>->) ::
      forall lcs lcs' r rcs' rescs m a.
      ( Remove (Pred (Len lcs)) lcs lcs'
-     , All Functor lcs'
-     , All Functor rcs'
      , Annihilate r (Last lcs)
      , Append lcs' rcs' rescs
-     , Functor m
      )
   => Node lcs m a -- ^ ‘Upstream’ node.
   -> Node (r : rcs') m a -- ^ ‘Downstream’ node.
@@ -210,11 +217,8 @@ infixl 8 >->
 linkPipe_ ::
      ( Remove (Pred (Len lcs)) lcs lcs'
      , Null lcs ~ 'False
-     , All Functor lcs'
-     , All Functor rcs'
      , Annihilate r (Last lcs)
      , Append lcs' rcs' rescs
-     , Functor m
      )
   => Node lcs m a
   -> Node (r : rcs') m a
@@ -256,12 +260,7 @@ linkPipe_ = linkOn lastIndex i0
 -- While the indentation in the example certainly helps to understand
 -- the data flow, it is, unfortunately, not enforced in any way.
 (|->) ::
-     ( All Functor lcs
-     , All Functor rcs
-     , Annihilate r l
-     , Append rcs lcs rescs
-     , Functor m
-     )
+     (Annihilate r l, Append rcs lcs rescs)
   => Node (l : lcs) m a -- ^ ‘Producer’.
   -> Node (r : rcs) m a -- ^ Attached node.
   -> Node rescs m a
@@ -300,11 +299,8 @@ infixl 7 |->
      forall lcs rcs lcs' rcs' rescs m a.
      ( Remove (Pred (Len lcs)) lcs lcs'
      , Remove (Pred (Len rcs)) rcs rcs'
-     , All Functor lcs'
-     , All Functor rcs'
      , Annihilate (Last rcs) (Last lcs)
      , Append rcs' lcs' rescs
-     , Functor m
      )
   => Node lcs m a -- ^ Attached node.
   -> Node rcs m a -- ^ ‘Consumer’.
@@ -325,10 +321,7 @@ linkConsumer_ ::
      , Remove (Pred (Len lcs)) lcs lcs'
      , Remove (Pred (Len rcs)) rcs rcs'
      , Annihilate (Last rcs) (Last lcs)
-     , All Functor lcs'
-     , All Functor rcs'
      , Append rcs' lcs' rescs
-     , Functor m
      )
   => Node lcs m a
   -> Node rcs m a
@@ -348,11 +341,8 @@ linkOn ::
      forall n k lcs lcs' lc rcs rcs' rc rescs m r.
      ( Remove n lcs lcs'
      , Remove k rcs rcs'
-     , All Functor lcs'
-     , All Functor rcs'
      , Annihilate rc lc
      , Append lcs' rcs' rescs
-     , Functor m
      )
   => IIndex n lcs lc -- ^ The index of the linked channel on the first node.
   -> IIndex k rcs rc -- ^ The index of the linked channel on the
@@ -381,11 +371,8 @@ linkOn' ::
      forall n k lcs lcs' lc rcs rcs' rc rescs m r.
      ( Remove n lcs lcs'
      , Remove k rcs rcs'
-     , All Functor lcs'
-     , All Functor rcs'
      , Annihilate rc lc
      , Append rcs' lcs' rescs
-     , Functor m
      )
   => IIndex n lcs lc -- ^ The index of the linked channel on the first node.
   -> IIndex k rcs rc -- ^ The index of the linked channel on the
@@ -446,13 +433,10 @@ linkOn' n k =
 (+>>) ::
      forall lcs lcs' lreq lresp rcs' rreq rresp rescs m a.
      ( Remove (Pred (Len lcs)) lcs lcs'
-     , All Functor lcs'
-     , All Functor rcs'
      , Last lcs ~ Compose lresp lreq
      , Annihilate lreq rresp
      , Annihilate rreq lresp
      , Append lcs' rcs' rescs
-     , Functor m
      )
   => lreq (Node lcs m a) -- ^ Upstream ‘server’ node.
   -> Node (Compose rresp rreq : rcs') m a -- ^ Downstream ‘client’
@@ -487,14 +471,11 @@ infixr 5 +>>
 -- @
 (>+>) ::
      ( Remove (Pred (Len lcs)) lcs lcs'
-     , All Functor lcs'
-     , All Functor rcs'
      , Last lcs ~ Compose lresp lreq
      , Annihilate lreq rresp
      , Annihilate rreq lresp
      , Append lcs' rcs' rescs
      , Functor rreq'
-     , Functor m
      )
   => lreq (Node lcs m a) -- ^ Upstream ‘server’ node.
   -> rreq' (Node (Compose rresp rreq : rcs') m a) -- ^ Downstream
@@ -507,14 +488,11 @@ infixl 6 >+>
 
 linkDuplexPullPipe_ ::
      ( Remove (Pred (Len lcs)) lcs lcs'
-     , All Functor lcs'
-     , All Functor rcs'
      , Null lcs ~ 'False
      , Last lcs ~ Compose lresp lreq
      , Annihilate lreq rresp
      , Annihilate rreq lresp
      , Append lcs' rcs' rescs
-     , Functor m
      )
   => lreq (Node lcs m r)
   -> Node (Compose rresp rreq : rcs') m r
@@ -556,13 +534,10 @@ linkDuplexPullPipe_ = linkOnDuplex lastIndex i0
 (>>~) ::
      forall lcs lreq lresp lcs' rcs' rreq rresp rescs m a.
      ( Remove (Pred (Len lcs)) lcs lcs'
-     , All Functor lcs'
-     , All Functor rcs'
      , Last lcs ~ Compose lresp lreq
      , Annihilate lreq rresp
      , Annihilate rreq lresp
      , Append lcs' rcs' rescs
-     , Functor m
      )
   => Node lcs m a -- ^ Upstream ‘client’ node.
   -> rreq (Node (Compose rresp rreq : rcs') m a) -- ^ Downstream
@@ -597,14 +572,11 @@ infixl 5 >>~
 -- @
 (>~>) ::
      ( Remove (Pred (Len lcs)) lcs lcs'
-     , All Functor lcs'
-     , All Functor rcs'
      , Functor lreq'
      , Last lcs ~ Compose lresp lreq
      , Annihilate lreq rresp
      , Annihilate rreq lresp
      , Append lcs' rcs' rescs
-     , Functor m
      )
   => lreq' (Node lcs m a) -- ^ Upstream ‘client’ node.
   -> rreq (Node (Compose rresp rreq : rcs') m a) -- ^ Downstream
@@ -617,14 +589,11 @@ infixl 6 >~>
 
 linkDuplexPushPipe_ ::
      ( Remove (Pred (Len lcs)) lcs lcs'
-     , All Functor lcs'
-     , All Functor rcs'
      , Null lcs ~ 'False
      , Last lcs ~ Compose lresp lreq
      , Annihilate lreq rresp
      , Annihilate rreq lresp
      , Append lcs' rcs' rescs
-     , Functor m
      )
   => Node lcs m r
   -> rreq (Node (Compose rresp rreq : rcs') m r)
@@ -634,12 +603,9 @@ linkDuplexPushPipe_ = flip (linkOnDuplex' i0 lastIndex)
 
 -- | @('|>~')@ is to @('>>~')@ what @('|->')@ is to @('>->')@.
 (|>~) ::
-     ( All Functor lcs
-     , All Functor rcs
-     , Annihilate lreq rresp
+     ( Annihilate lreq rresp
      , Annihilate rreq lresp
      , Append rcs lcs rescs
-     , Functor m
      )
   => Node (Compose lresp lreq : lcs) m r -- ^ A ‘client’ node.
   -> rreq (Node (Compose rresp rreq : rcs) m r) -- ^ A ‘server’ node.
@@ -654,14 +620,11 @@ infixl 4 |>~
      forall lcs lcs' rcs rcs' rescs lreq lresp rresp rreq m a.
      ( Remove (Pred (Len lcs)) lcs lcs'
      , Remove (Pred (Len rcs)) rcs rcs'
-     , All Functor lcs'
-     , All Functor rcs'
      , Last lcs ~ Compose lresp lreq
      , Last rcs ~ Compose rresp rreq
      , Annihilate lreq rresp
      , Annihilate rreq lresp
      , Append rcs' lcs' rescs
-     , Functor m
      )
   => lreq (Node lcs m a) -- ^ A ‘server’ node.
   -> Node rcs m a -- ^ A ‘client’ node.
@@ -679,8 +642,6 @@ infixr 4 +>|
 linkConsumerDuplex_ ::
      ( Remove (Pred (Len rcs)) rcs rcs'
      , Remove (Pred (Len lcs)) lcs lcs'
-     , All Functor lcs'
-     , All Functor rcs'
      , Null lcs ~ 'False
      , Null rcs ~ 'False
      , Last lcs ~ Compose lresp lreq
@@ -688,7 +649,6 @@ linkConsumerDuplex_ ::
      , Annihilate lreq rresp
      , Annihilate rreq lresp
      , Append rcs' lcs' rescs
-     , Functor m
      )
   => lreq (Node lcs m a)
   -> Node rcs m a
@@ -702,12 +662,9 @@ linkOnDuplex ::
      forall n k lcs lcs' lresp lreq rcs rcs' rresp rreq rescs m r.
      ( Remove n lcs lcs'
      , Remove k rcs rcs'
-     , All Functor lcs'
-     , All Functor rcs'
      , Annihilate lreq rresp
      , Annihilate rreq lresp
      , Append lcs' rcs' rescs
-     , Functor m
      )
   => IIndex n lcs (Compose lresp lreq) -- ^ The index of the linked
      -- channel on the ‘server’ node.
@@ -730,12 +687,9 @@ linkOnDuplex' ::
      forall n k lcs lcs' lresp lreq rcs rcs' rresp rreq rescs m r.
      ( Remove k rcs rcs'
      , Remove n lcs lcs'
-     , All Functor lcs'
-     , All Functor rcs'
      , Annihilate lreq rresp
      , Annihilate rreq lresp
      , Append rcs' lcs' rescs
-     , Functor m
      )
   => IIndex n lcs (Compose lresp lreq) -- ^ The index of the linked
      -- channel on the ‘server’ node.
@@ -758,11 +712,8 @@ linkOnDuplex' = genericLinkOn getCompose getCompose (finr proxyR) (finl proxyL)
 genericLinkOn ::
      ( Remove n lcs lcs'
      , Remove k rcs rcs'
-     , All Functor lcs'
-     , All Functor rcs'
      , Annihilate lreq rresp
      , Annihilate rreq lresp
-     , Functor m
      )
   => (forall x. lc x -> lresp (lreq x)) -- ^ Convert the channel on
      -- the first node to a duplex representation.
@@ -776,28 +727,32 @@ genericLinkOn ::
                      -- node.
   -> IIndex k rcs rc -- ^ The index of the linked channel on the
                      -- second node.
-  -> lreq (Node lcs m r)
-  -> Node rcs m r
-  -> Node rescs m r
+  -> lreq (Node lcs m a)
+  -> Node rcs m a
+  -> Node rescs m a
 {-# INLINE genericLinkOn #-}
-genericLinkOn ldecompose rdecompose lembed rembed n k = loop
-  where
-    loop _ (Return r) = Return r
-    loop left (Effect eff) = Effect (fmap (loop left) eff)
-    loop left (Connect cons) =
-      case fdecompIdx k cons of
-        Left other -> Connect (rembed (fmap (loop left) other))
-        Right con ->
-              -- The case statements are here for strictness; the
-              -- point is to avoid accidentally retaining the
-              -- reference to the node we're iterating over.
-          case annihilate left (rdecompose con) of
-            (left', right') -> loop' right' left'
-    loop' _ (Return r) = Return r
-    loop' right (Effect eff) = Effect (fmap (loop' right) eff)
-    loop' right (Connect cons) =
-      case fdecompIdx n cons of
-        Left other -> Connect (lembed (fmap (loop' right) other))
-        Right con ->
-          case annihilate right (ldecompose con) of
-            (right', left') -> loop left' right'
+genericLinkOn ldecompose rdecompose lembed rembed n k =
+  \l r ->
+    build
+      (\ret con lft ->
+         let loop left =
+               unconsNode
+                 ret
+                 (\cs cont ->
+                    case fdecompIdx k cs of
+                      Left other -> con (rembed other) (loop left . cont)
+                      Right c ->
+                        case annihilate left (rdecompose c) of
+                          (left', right') -> loop' (fmap cont right') left')
+                 (\e cont -> lft e (loop left . cont))
+             loop' right =
+               unconsNode
+                 ret
+                 (\cs cont ->
+                    case fdecompIdx n cs of
+                      Left other -> con (lembed other) (loop' right . cont)
+                      Right c ->
+                        case annihilate right (ldecompose c) of
+                          (right', left') -> loop (fmap cont left') right')
+                 (\e cont -> lft e (loop' right . cont))
+         in loop l r)

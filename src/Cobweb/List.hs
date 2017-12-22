@@ -50,8 +50,8 @@ import Control.Monad.Trans (MonadTrans(lift))
 import Control.Monad.Trans.Resource (MonadResource(liftResourceT))
 import Data.Semigroup (Semigroup((<>)))
 
-import Cobweb.Core (i0, mapOn)
-import Cobweb.Internal (Node(Connect, Effect, Return))
+import Cobweb.Core (connect, i0, mapOn)
+import Cobweb.Internal (cata)
 import Cobweb.Producer (Producer, for, yield)
 
 -- | A monad transformer that adds ‘choose both’-style 'Alternative'
@@ -60,28 +60,28 @@ newtype ListT m a = ListT
   { runListT :: Producer a m ()
   }
 
-instance Functor m => Functor (ListT m) where
+instance Functor (ListT m) where
   fmap f = ListT . mapOn i0 f . runListT
 
-instance Monad m => Applicative (ListT m) where
+instance Applicative (ListT m) where
   pure = ListT . yield
   (<*>) = ap
 
-instance Monad m => Monad (ListT m) where
+instance Monad (ListT m) where
   x >>= f = ListT $ for (runListT x) (runListT . f)
 
-instance Monad m => Semigroup (ListT m a) where
+instance Semigroup (ListT m a) where
   x <> y = ListT $ runListT x >> runListT y
 
-instance Monad m => Monoid (ListT m a) where
+instance Monoid (ListT m a) where
   mempty = ListT (pure ())
   mappend = (<>)
 
-instance Monad m => Alternative (ListT m) where
+instance Alternative (ListT m) where
   empty = mempty
   (<|>) = mappend
 
-instance Monad m => MonadPlus (ListT m)
+instance MonadPlus (ListT m)
 
 instance MonadTrans ListT where
   lift x =
@@ -130,10 +130,10 @@ instance MonadResource m => MonadResource (ListT m) where
   liftResourceT = lift . liftResourceT
 
 instance MMonad ListT where
-  embed f = ListT . loop . runListT
-    where
-      -- u is () here, but forcing that via pattern match would
-      -- effectively change last @return@ into @return $!@
-      loop (Return u) = Return u
-      loop (Connect con) = Connect (fmap loop con)
-      loop (Effect eff) = for (runListT (f eff)) loop
+  embed f (ListT node) =
+    ListT $
+    cata
+      pure
+      (\c cont -> connect c >>= cont)
+      (\eff cont -> for (runListT $ f eff) cont)
+      node

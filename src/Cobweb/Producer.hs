@@ -13,7 +13,6 @@ counterparts in "Cobweb.Core"; these are specialised for 'Producer's.
 -}
 {-# OPTIONS_HADDOCK show-extensions #-}
 {-# OPTIONS_GHC -Wno-missing-import-lists #-}
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -37,13 +36,22 @@ import Prelude hiding (span, splitAt)
 import Control.Monad (forever)
 import Control.Monad.Trans (lift)
 import Type.Family.List (Last, Null)
+import Data.Functor.Coyoneda (lowerCoyoneda)
 
 import Cobweb.Core
-       (Leaf, Producer, Yield, eachOn, forOn, inspectLeaf, leafOn, mapOn,
-        yieldOn)
-import Cobweb.Internal (Node(Connect, Effect, Return))
-import Cobweb.Type.Combinators
-       (Inductive, All, IIndex, fsumOnly, i0, lastIndex)
+  ( Leaf
+  , Producer
+  , Yield
+  , connect
+  , eachOn
+  , forOn
+  , inspectLeaf
+  , leafOn
+  , mapOn
+  , yieldOn
+  )
+import Cobweb.Internal (Node, build, unconsNode)
+import Cobweb.Type.Combinators (IIndex, Inductive, fsumOnly, i0, lastIndex)
 
 -- | Produce a value on the last channel of a 'Node'.
 --
@@ -72,7 +80,7 @@ yield ::
 yield = yieldOn lastIndex
 
 -- | Yield each value in order.
-each :: (Foldable f, Functor m) => f a -> Producer a m ()
+each :: Foldable f => f a -> Producer a m ()
 {-# INLINE each #-}
 each = eachOn i0
 
@@ -85,12 +93,12 @@ generate source =
     yield a
 
 -- | Apply a function to all yielded values.
-mapP :: Functor m => (a -> b) -> Producer a m () -> Producer b m ()
+mapP :: (a -> b) -> Producer a m () -> Producer b m ()
 mapP = mapOn i0
 
 -- | Loop over a producer.
 for ::
-     (All Functor cs, Inductive cs, Functor m)
+     Inductive cs
   => Producer a m r -- ^ Source of values.
   -> (a -> Node cs m ()) -- ^ Loop body.
   -> Node cs m r
@@ -99,12 +107,8 @@ for = forOn i0
 -- | Run a 'Producer' until it either terminates, or produces a
 -- value.  In the latter case, returns the value along with the rest
 -- of the 'Producer'
---
--- @
--- 'next' = 'inspectLeaf'
--- @
 next :: Monad m => Producer a m r -> m (Either r (a, Producer a m r))
-next = inspectLeaf
+next = fmap (fmap lowerCoyoneda) . inspectLeaf
 
 -- | Embed a 'Producer' into a larger 'Node', by identifying its sole
 -- output channel with a matching channel in the outer 'Node'.
@@ -127,7 +131,7 @@ next = inspectLeaf
 --    -> 'Node' (c0 : c1 : 'Yield' a : cs) m r
 -- @
 produceOn ::
-     (Functor m, Inductive cs)
+     Inductive cs
   => IIndex n cs (Yield a) -- ^ A channel to attach to.
   -> Producer a m r
   -> Node cs m r
@@ -137,17 +141,20 @@ produceOn = leafOn
 -- predicate (non-inclusive), then return the rest of the stream.
 --
 -- A moral equivalent of 'Data.List.span'.
-span ::
-     Functor m => (a -> Bool) -> Producer a m r -> Producer a m (Producer a m r)
-span predicate = loop
-  where
-    loop (Return r) = Return (pure r)
-    loop (Effect eff) = Effect (fmap loop eff)
-    loop (Connect con) =
-      let !(a, _) = fsumOnly con
-      in if predicate a
-           then Connect (fmap loop con)
-           else Return (Connect con)
+span :: (a -> Bool) -> Producer a m r -> Producer a m (Producer a m r)
+span predicate node =
+  build
+    (\ret con lft ->
+       let loop =
+             unconsNode
+               (ret . pure)
+               (\cs cont ->
+                  let (a, _) = fsumOnly cs
+                  in if predicate a
+                       then con cs (loop . cont)
+                       else ret (connect cs >>= cont))
+               (\eff cont -> lft eff (loop . cont))
+       in loop node)
 
 -- | Split the stream at @n@th connection, and return the rest.
 --
@@ -160,9 +167,15 @@ span predicate = loop
 --
 -- A moral equivalent of 'Data.List.splitAt'; see also
 -- 'Cobweb.Consumer.splitAt'.
-splitAt :: (Functor c, Functor m) => Int -> Leaf c m r -> Leaf c m (Leaf c m r)
-splitAt n node
-  | n <= 0 = pure node
-splitAt _ (Return r) = Return (pure r)
-splitAt n (Effect eff) = Effect (fmap (splitAt n) eff)
-splitAt n (Connect con) = Connect (fmap (splitAt (n - 1)) con)
+splitAt :: Int -> Leaf c m a -> Leaf c m (Leaf c m a)
+splitAt n node =
+  build
+    (\ret con lft ->
+       let loop k
+             | k <= 0 = ret
+           loop k =
+             unconsNode
+               (ret . pure)
+               (\c cont -> con c (loop (k - 1) . cont))
+               (\eff cont -> lft eff (loop k . cont))
+       in loop n node)

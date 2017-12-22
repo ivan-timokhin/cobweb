@@ -41,8 +41,8 @@ import Control.Monad.Trans (lift)
 import GHC.Stack (HasCallStack)
 
 import qualified Cobweb.Consumer as C
-import Cobweb.Core (Leaf, Producer, gforOn, i0, yieldOn)
-import Cobweb.Internal (Node(Connect, Effect, Return))
+import Cobweb.Core (Leaf, Producer, connect, gforOn, i0, yieldOn)
+import Cobweb.Internal (build, unconsNode)
 import qualified Cobweb.Producer as P
 import Cobweb.Type.Combinators (FSum(FInL), fsumOnly)
 
@@ -53,18 +53,18 @@ import Cobweb.Type.Combinators (FSum(FInL), fsumOnly)
 -- chunk contains all effects /preceding/ its connections (except for
 -- the first one), which typically makes sense for 'Producer's, which
 -- run all connection-associated actions before the actual connection.
-chunkBy ::
-     (HasCallStack, Functor c, Functor m)
-  => Int
-  -> Leaf c m r
-  -> Leaf (Leaf c m) m r
-chunkBy n
+chunkBy :: HasCallStack => Int -> Leaf c m a -> Leaf (Leaf c m) m a
+chunkBy n node
   | n <= 0 = error "Chunk length should be positive"
-  | otherwise = loop
-  where
-    loop (Return r) = Return r
-    loop (Effect eff) = Effect (fmap loop eff)
-    loop node@(Connect _) = Connect $ FInL $ fmap loop (P.splitAt n node)
+  | otherwise =
+    build
+      (\ret con lft ->
+         let loop =
+               unconsNode
+                 ret
+                 (\c cont -> con (FInL $ P.splitAt n (connect c >>= cont)) loop)
+                 (\e cont -> lft e (loop . cont))
+         in loop node)
 
 -- | Split a stream into substreams of specified number of connections
 -- each (except, possibly, for the last one).
@@ -74,40 +74,43 @@ chunkBy n
 -- connections, which typically makes sense for
 -- 'Cobweb.Core.Consumer's, which run all connection-associated
 -- actions after the actual connection.
-chunkConsumerBy ::
-     (HasCallStack, Functor c, Functor m)
-  => Int
-  -> Leaf c m r
-  -> Leaf (Leaf c m) m r
-chunkConsumerBy n
+chunkConsumerBy :: HasCallStack => Int -> Leaf c m r -> Leaf (Leaf c m) m r
+chunkConsumerBy n node
   | n <= 0 = error "Chunk length should be positive"
-  | otherwise = loop
-  where
-    loop (Return r) = Return r
-    loop (Effect eff) = Effect (fmap loop eff)
-    loop node@(Connect _) = Connect $ FInL $ fmap loop (C.splitAt n node)
+  | otherwise =
+    build
+      (\ret con lft ->
+         let loop =
+               unconsNode
+                 ret
+                 (\c cont -> con (FInL $ C.splitAt n (connect c >>= cont)) loop)
+                 (\e cont -> lft e (loop . cont))
+         in loop node)
 
 -- | Groups consecutive equal (as identified by the supplied
 -- predicate) elements of the stream together.
 --
 -- Supplied predicate should define [an equivalence
 -- relation](https://en.wikipedia.org/wiki/Equivalence_relation#Definition).
-groupBy ::
-     Functor m => (a -> a -> Bool) -> Producer a m r -> Leaf (Producer a m) m r
-groupBy eq = loop
-  where
-    loop (Return r) = Return r
-    loop (Effect eff) = Effect (fmap loop eff)
-    loop (Connect con) =
-      let !(a, rest) = fsumOnly con
-      in Connect $ FInL $ Connect $ FInL (a, fmap loop (P.span (eq a) rest))
+groupBy :: (a -> a -> Bool) -> Producer a m r -> Leaf (Producer a m) m r
+groupBy eq node =
+  build
+    (\ret con lft ->
+       let loop =
+             unconsNode
+               ret
+               (\c cont ->
+                  let !(a, _) = fsumOnly c
+                  in con (FInL $ connect c >>= (P.span (eq a) . cont)) loop)
+               (\e cont -> lft e (loop . cont))
+       in loop node)
 
 -- | Groups consecutive equal stream elements together.
 --
 -- @
 -- 'Cobweb.Group.group' = 'Cobweb.Group.groupBy' ('==')
 -- @
-group :: (Eq a, Functor m) => Producer a m r -> Leaf (Producer a m) m r
+group :: Eq a => Producer a m r -> Leaf (Producer a m) m r
 group = groupBy (==)
 
 -- | Concatenate all substreams together, similar to
@@ -119,22 +122,23 @@ group = groupBy (==)
 -- @
 -- 'Cobweb.Group.concat' node = 'gforOn' 'i0' node 'id'
 -- @
-concat :: (Functor c, Functor m) => Leaf (Leaf c m) m r -> Leaf c m r
+concat :: Leaf (Leaf c m) m r -> Leaf c m r
 concat node = gforOn i0 node id
 
 -- | Concatenate substreams together, inserting separator between
 -- them.  A moral equivalent of 'Data.List.intercalate'.
 intercalate ::
-     forall c m r. (Functor c, Functor m)
+     forall c m a. Monad m
   => Leaf c m () -- ^ Separator.
-  -> Leaf (Leaf c m) m r -- ^ Stream of streams.
-  -> Leaf c m r
+  -> Leaf (Leaf c m) m a -- ^ Stream of streams.
+  -> Leaf c m a
 intercalate separator = loop
   where
-    loop :: Leaf (Leaf c m) m r -> Leaf c m r
-    loop (Return r) = Return r
-    loop (Effect eff) = Effect (fmap loop eff)
-    loop (Connect con) = fsumOnly con >>= loop'
+    loop =
+      unconsNode
+        pure
+        (\c cont -> fsumOnly c >>= (loop' . cont))
+        (\e cont -> lift e >>= (loop . cont))
     loop' :: Leaf (Leaf c m) m r -> Leaf c m r
     loop' node = gforOn i0 node (separator >>)
 
@@ -155,7 +159,7 @@ intercalate separator = loop
 -- Keep in mind that accumulation into lists is there only for
 -- demonstration purposes; actually doing that is usually a bad idea.
 foldChunks ::
-     (Functor c, Monad m)
+     Monad m
   => (forall x. Leaf c m x -> m (a, x))
   -> Leaf (Leaf c m) m r
   -> Producer a m r
