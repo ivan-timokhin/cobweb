@@ -15,7 +15,6 @@ first node to terminate brings down the entire resulting computation.
 {-# OPTIONS_HADDOCK show-extensions #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -24,10 +23,10 @@ first node to terminate brings down the entire resulting computation.
 {-# LANGUAGE UndecidableInstances #-}
 
 module Cobweb.Link
-  ( Annihilate(annihilate)
+  (
     -- * Simplex communication
     -- $simplex
-  , (>->)
+    (>->)
   , (|->)
   , (>-|)
   , linkOn
@@ -47,14 +46,13 @@ module Cobweb.Link
   ) where
 
 import Data.Functor.Compose (Compose(getCompose))
-import Data.Functor.Identity (Identity(Identity, runIdentity))
+import Data.Functor.Identity (Identity(Identity))
 import Data.Proxy (Proxy(Proxy))
 import Type.Class.Witness (Witness((\\)))
 import Type.Family.List (Last, Null)
 import Type.Family.Nat (Len, Pred)
-import Data.Functor.Sum (Sum(InL, InR))
-import Data.Functor.Product (Product(Pair))
 
+import Cobweb.Core (Await, Request, Yield)
 import Cobweb.Internal (Node, unconsNode, build)
 import Cobweb.Type.Combinators
   ( Append
@@ -70,55 +68,6 @@ import Cobweb.Type.Combinators
   , removeW
   )
 import Cobweb.Type.Lemmata (removeNonEmpty)
-
--- The functional dependency on Annihilate is very annoying, but in
--- its absence GHC can't even figure out that @Await a@ and
--- @Yield b@ pair only if @a ~ b@.  Unfortunately, this
--- significantly complicates adding named channels.
---
--- An alternative would be to explicitly demand that the functors are
--- additionally parametrised by the communicating type, and demand
--- that *that* matches without any additional dependencies on the
--- (bi|pro)functors themselves, but that would significantly
--- complicate custom channels.  Hrm.
-
--- | A definition of what it means for two functors to ‘match’ so that
--- they can be linked.
---
--- The essential idea here is that each functor carries with it
--- whatever is needed to extract the value from the other; the
--- instance for @(,)@ and @(->)@ is probably the clearest
--- demonstration of the concept (and also the most often used one).
-class (Functor f, Functor g) =>
-      Annihilate f g
-  | f -> g
-  , g -> f
-  where
-  -- | ‘Annihilate’ functor contexts, getting underlying values.
-  annihilate :: f a -> g b -> (a, b)
-
-instance Annihilate ((,) e) ((->) e) where
-  annihilate (e, a) fb = (a, fb e)
-
-instance Annihilate ((->) e) ((,) e) where
-  annihilate fa (e, b) = (fa e, b)
-
-instance Annihilate Identity Identity where
-  annihilate x y = (runIdentity x, runIdentity y)
-
-instance (Annihilate f1 g1, Annihilate f2 g2) =>
-         Annihilate (Compose f1 f2) (Compose g1 g2) where
-  annihilate x y = uncurry annihilate (annihilate (getCompose x) (getCompose y))
-
-instance (Annihilate f1 g1, Annihilate f2 g2) =>
-         Annihilate (Sum f1 f2) (Product g1 g2) where
-  annihilate (InL f) (Pair g _) = annihilate f g
-  annihilate (InR f) (Pair _ g) = annihilate f g
-
-instance (Annihilate f1 g1, Annihilate f2 g2) =>
-         Annihilate (Product f1 f2) (Sum g1 g2) where
-  annihilate (Pair f _) (InL g) = annihilate f g
-  annihilate (Pair _ f) (InR g) = annihilate f g
 
 -- $simplex
 --
@@ -198,13 +147,13 @@ instance (Annihilate f1 g1, Annihilate f2 g2) =>
 -- However, the primary intended use of this operator is closer to the
 -- first group of types, and this generality should not be abused.
 (>->) ::
-     forall lcs lcs' r rcs' rescs m a.
+     forall lcs lcs' b rcs' rescs m a.
      ( Remove (Pred (Len lcs)) lcs lcs'
-     , Annihilate r (Last lcs)
+     , Last lcs ~ Yield b
      , Append lcs' rcs' rescs
      )
   => Node lcs m a -- ^ ‘Upstream’ node.
-  -> Node (r : rcs') m a -- ^ ‘Downstream’ node.
+  -> Node (Await b : rcs') m a -- ^ ‘Downstream’ node.
   -> Node rescs m a
 {-# INLINE (>->) #-}
 (>->) = linkPipe_ \\ removeNonEmpty lrem
@@ -217,11 +166,11 @@ infixl 8 >->
 linkPipe_ ::
      ( Remove (Pred (Len lcs)) lcs lcs'
      , Null lcs ~ 'False
-     , Annihilate r (Last lcs)
+     , Last lcs ~ Yield b
      , Append lcs' rcs' rescs
      )
   => Node lcs m a
-  -> Node (r : rcs') m a
+  -> Node (Await b : rcs') m a
   -> Node rescs m a
 {-# INLINE linkPipe_ #-}
 linkPipe_ = linkOn lastIndex i0
@@ -260,9 +209,9 @@ linkPipe_ = linkOn lastIndex i0
 -- While the indentation in the example certainly helps to understand
 -- the data flow, it is, unfortunately, not enforced in any way.
 (|->) ::
-     (Annihilate r l, Append rcs lcs rescs)
-  => Node (l : lcs) m a -- ^ ‘Producer’.
-  -> Node (r : rcs) m a -- ^ Attached node.
+     Append rcs lcs rescs
+  => Node (Yield b : lcs) m a -- ^ ‘Producer’.
+  -> Node (Await b : rcs) m a -- ^ Attached node.
   -> Node rescs m a
 {-# INLINE (|->) #-}
 (|->) = linkOn' i0 i0
@@ -296,10 +245,11 @@ infixl 7 |->
 -- "3Cz"
 -- @
 (>-|) ::
-     forall lcs rcs lcs' rcs' rescs m a.
+     forall lcs rcs lcs' rcs' rescs m b a.
      ( Remove (Pred (Len lcs)) lcs lcs'
      , Remove (Pred (Len rcs)) rcs rcs'
-     , Annihilate (Last rcs) (Last lcs)
+     , Last rcs ~ Await b
+     , Last lcs ~ Yield b
      , Append rcs' lcs' rescs
      )
   => Node lcs m a -- ^ Attached node.
@@ -320,7 +270,8 @@ linkConsumer_ ::
      , Null rcs ~ 'False
      , Remove (Pred (Len lcs)) lcs lcs'
      , Remove (Pred (Len rcs)) rcs rcs'
-     , Annihilate (Last rcs) (Last lcs)
+     , Last rcs ~ Await b
+     , Last lcs ~ Yield b
      , Append rcs' lcs' rescs
      )
   => Node lcs m a
@@ -338,14 +289,13 @@ linkConsumer_ = linkOn' lastIndex lastIndex
 -- ('>->') = 'linkOn' 'lastIndex' 'i0'
 -- @
 linkOn ::
-     forall n k lcs lcs' lc rcs rcs' rc rescs m r.
+     forall n k lcs lcs' rcs rcs' rescs m b r.
      ( Remove n lcs lcs'
      , Remove k rcs rcs'
-     , Annihilate rc lc
      , Append lcs' rcs' rescs
      )
-  => IIndex n lcs lc -- ^ The index of the linked channel on the first node.
-  -> IIndex k rcs rc -- ^ The index of the linked channel on the
+  => IIndex n lcs (Yield b) -- ^ The index of the linked channel on the first node.
+  -> IIndex k rcs (Await b) -- ^ The index of the linked channel on the
      -- second node.
   -> Node lcs m r
   -> Node rcs m r
@@ -353,8 +303,8 @@ linkOn ::
 {-# INLINE linkOn #-}
 linkOn n k =
   genericLinkOn
-    annihilate
-    annihilate
+    annihilateIdentity
+    annihilateYield
     (fmap Identity)
     Identity
     (finl proxyR)
@@ -376,14 +326,13 @@ linkOn n k =
 -- ('>-|') = 'linkOn'' 'lastIndex' 'lastIndex'
 -- @
 linkOn' ::
-     forall n k lcs lcs' lc rcs rcs' rc rescs m r.
+     forall n k lcs lcs' rcs rcs' rescs b m r.
      ( Remove n lcs lcs'
      , Remove k rcs rcs'
-     , Annihilate rc lc
      , Append rcs' lcs' rescs
      )
-  => IIndex n lcs lc -- ^ The index of the linked channel on the first node.
-  -> IIndex k rcs rc -- ^ The index of the linked channel on the
+  => IIndex n lcs (Yield b) -- ^ The index of the linked channel on the first node.
+  -> IIndex k rcs (Await b) -- ^ The index of the linked channel on the
      -- second node.
   -> Node lcs m r
   -> Node rcs m r
@@ -391,8 +340,8 @@ linkOn' ::
 {-# INLINE linkOn' #-}
 linkOn' n k =
   genericLinkOn
-    annihilate
-    annihilate
+    annihilateIdentity
+    annihilateYield
     (fmap Identity)
     Identity
     (finr proxyR)
@@ -447,15 +396,13 @@ linkOn' n k =
 --   -> 'Cobweb.Duplex.Proxy' a' a c' c m r
 -- @
 (+>>) ::
-     forall lcs lcs' lreq lresp rcs' rreq rresp rescs m a.
+     forall lcs lcs' rcs' rescs m b c a.
      ( Remove (Pred (Len lcs)) lcs lcs'
-     , Last lcs ~ Compose lresp lreq
-     , Annihilate lreq rresp
-     , Annihilate rreq lresp
+     , Last lcs ~ Request b c
      , Append lcs' rcs' rescs
      )
-  => lreq (Node lcs m a) -- ^ Upstream ‘server’ node.
-  -> Node (Compose rresp rreq : rcs') m a -- ^ Downstream ‘client’
+  => (c -> Node lcs m a) -- ^ Upstream ‘server’ node.
+  -> Node (Request c b : rcs') m a -- ^ Downstream ‘client’
                                           -- node.
   -> Node rescs m a
 {-# INLINE (+>>) #-}
@@ -487,16 +434,13 @@ infixr 5 +>>
 -- @
 (>+>) ::
      ( Remove (Pred (Len lcs)) lcs lcs'
-     , Last lcs ~ Compose lresp lreq
-     , Annihilate lreq rresp
-     , Annihilate rreq lresp
+     , Last lcs ~ Request b c
      , Append lcs' rcs' rescs
-     , Functor rreq'
      )
-  => lreq (Node lcs m a) -- ^ Upstream ‘server’ node.
-  -> rreq' (Node (Compose rresp rreq : rcs') m a) -- ^ Downstream
+  => (c -> Node lcs m a) -- ^ Upstream ‘server’ node.
+  -> (d -> Node (Request c b : rcs') m a) -- ^ Downstream
      -- ‘client’ node.
-  -> rreq' (Node rescs m a)
+  -> (d -> Node rescs m a)
 {-# INLINE (>+>) #-}
 (>+>) left = fmap (left +>>)
 
@@ -505,13 +449,11 @@ infixl 6 >+>
 linkDuplexPullPipe_ ::
      ( Remove (Pred (Len lcs)) lcs lcs'
      , Null lcs ~ 'False
-     , Last lcs ~ Compose lresp lreq
-     , Annihilate lreq rresp
-     , Annihilate rreq lresp
+     , Last lcs ~ Request b c
      , Append lcs' rcs' rescs
      )
-  => lreq (Node lcs m r)
-  -> Node (Compose rresp rreq : rcs') m r
+  => (c -> Node lcs m r)
+  -> Node (Request c b : rcs') m r
   -> Node rescs m r
 {-# INLINE linkDuplexPullPipe_ #-}
 linkDuplexPullPipe_ = linkOnDuplex lastIndex i0
@@ -548,16 +490,14 @@ linkDuplexPullPipe_ = linkOnDuplex lastIndex i0
 --   -> 'Cobweb.Duplex.Proxy' a' a c' c m r
 -- @
 (>>~) ::
-     forall lcs lreq lresp lcs' rcs' rreq rresp rescs m a.
+     forall lcs lcs' rcs' rescs m b c a.
      ( Remove (Pred (Len lcs)) lcs lcs'
-     , Last lcs ~ Compose lresp lreq
-     , Annihilate lreq rresp
-     , Annihilate rreq lresp
+     , Last lcs ~ Request b c
      , Append lcs' rcs' rescs
      )
   => Node lcs m a -- ^ Upstream ‘client’ node.
-  -> rreq (Node (Compose rresp rreq : rcs') m a) -- ^ Downstream
-     -- ‘server’ node.
+  -> (b -> Node (Request c b : rcs') m a) -- ^ Downstream ‘server’
+     -- node.
   -> Node rescs m a
 {-# INLINE (>>~) #-}
 (>>~) = linkDuplexPushPipe_ \\ removeNonEmpty lrem
@@ -588,16 +528,13 @@ infixl 5 >>~
 -- @
 (>~>) ::
      ( Remove (Pred (Len lcs)) lcs lcs'
-     , Functor lreq'
-     , Last lcs ~ Compose lresp lreq
-     , Annihilate lreq rresp
-     , Annihilate rreq lresp
+     , Last lcs ~ Request b c
      , Append lcs' rcs' rescs
      )
-  => lreq' (Node lcs m a) -- ^ Upstream ‘client’ node.
-  -> rreq (Node (Compose rresp rreq : rcs') m a) -- ^ Downstream
+  => (d -> Node lcs m a) -- ^ Upstream ‘client’ node.
+  -> (b -> Node (Request c b : rcs') m a) -- ^ Downstream
      -- ‘server’ node.
-  -> lreq' (Node rescs m a)
+  -> (d -> Node rescs m a)
 {-# INLINE (>~>) #-}
 left >~> right = fmap (>>~ right) left
 
@@ -606,25 +543,20 @@ infixl 6 >~>
 linkDuplexPushPipe_ ::
      ( Remove (Pred (Len lcs)) lcs lcs'
      , Null lcs ~ 'False
-     , Last lcs ~ Compose lresp lreq
-     , Annihilate lreq rresp
-     , Annihilate rreq lresp
+     , Last lcs ~ Request b c
      , Append lcs' rcs' rescs
      )
   => Node lcs m r
-  -> rreq (Node (Compose rresp rreq : rcs') m r)
+  -> (b -> Node (Request c b : rcs') m r)
   -> Node rescs m r
 {-# INLINE linkDuplexPushPipe_ #-}
 linkDuplexPushPipe_ = flip (linkOnDuplex' i0 lastIndex)
 
 -- | @('|>~')@ is to @('>>~')@ what @('|->')@ is to @('>->')@.
 (|>~) ::
-     ( Annihilate lreq rresp
-     , Annihilate rreq lresp
-     , Append rcs lcs rescs
-     )
-  => Node (Compose lresp lreq : lcs) m r -- ^ A ‘client’ node.
-  -> rreq (Node (Compose rresp rreq : rcs) m r) -- ^ A ‘server’ node.
+     Append rcs lcs rescs
+  => Node (Request b c : lcs) m r -- ^ A ‘client’ node.
+  -> (b -> Node (Request c b : rcs) m r) -- ^ A ‘server’ node.
   -> Node rescs m r
 {-# INLINE (|>~) #-}
 (|>~) = flip (linkOnDuplex i0 i0)
@@ -633,16 +565,14 @@ infixl 4 |>~
 
 -- | @('+>|')@ is to @('+>>')@ what @('>-|')@ is to @('>->')@.
 (+>|) ::
-     forall lcs lcs' rcs rcs' rescs lreq lresp rresp rreq m a.
+     forall lcs lcs' rcs rcs' rescs b c m a.
      ( Remove (Pred (Len lcs)) lcs lcs'
      , Remove (Pred (Len rcs)) rcs rcs'
-     , Last lcs ~ Compose lresp lreq
-     , Last rcs ~ Compose rresp rreq
-     , Annihilate lreq rresp
-     , Annihilate rreq lresp
+     , Last lcs ~ Request b c
+     , Last rcs ~ Request c b
      , Append rcs' lcs' rescs
      )
-  => lreq (Node lcs m a) -- ^ A ‘server’ node.
+  => (c -> Node lcs m a) -- ^ A ‘server’ node.
   -> Node rcs m a -- ^ A ‘client’ node.
   -> Node rescs m a
 {-# INLINE (+>|) #-}
@@ -660,13 +590,11 @@ linkConsumerDuplex_ ::
      , Remove (Pred (Len lcs)) lcs lcs'
      , Null lcs ~ 'False
      , Null rcs ~ 'False
-     , Last lcs ~ Compose lresp lreq
-     , Last rcs ~ Compose rresp rreq
-     , Annihilate lreq rresp
-     , Annihilate rreq lresp
+     , Last lcs ~ Request b c
+     , Last rcs ~ Request c b
      , Append rcs' lcs' rescs
      )
-  => lreq (Node lcs m a)
+  => (c -> Node lcs m a)
   -> Node rcs m a
   -> Node rescs m a
 {-# INLINE linkConsumerDuplex_ #-}
@@ -675,25 +603,20 @@ linkConsumerDuplex_ = linkOnDuplex' lastIndex lastIndex
 -- | Link nodes on a specified pair of duplex channels, putting first
 -- (‘server’) node's channels first in the result.
 linkOnDuplex ::
-     forall n k lcs lcs' lresp lreq rcs rcs' rresp rreq rescs m r.
-     ( Remove n lcs lcs'
-     , Remove k rcs rcs'
-     , Annihilate lreq rresp
-     , Annihilate rreq lresp
-     , Append lcs' rcs' rescs
-     )
-  => IIndex n lcs (Compose lresp lreq) -- ^ The index of the linked
+     forall n k lcs lcs' rcs rcs' b c rescs m r.
+     (Remove n lcs lcs', Remove k rcs rcs', Append lcs' rcs' rescs)
+  => IIndex n lcs (Request b c) -- ^ The index of the linked
      -- channel on the ‘server’ node.
-  -> IIndex k rcs (Compose rresp rreq) -- ^ The index of the linked
+  -> IIndex k rcs (Request c b) -- ^ The index of the linked
      -- channel on the ‘client’ node.
-  -> lreq (Node lcs m r) -- ^ ‘Server’ node.
+  -> (c -> Node lcs m r) -- ^ ‘Server’ node.
   -> Node rcs m r -- ^ ‘Client’ node.
   -> Node rescs m r
 {-# INLINE linkOnDuplex #-}
 linkOnDuplex =
   genericLinkOn
-    annihilate
-    annihilate
+    annihilateYield
+    annihilateYield
     getCompose
     getCompose
     (finl proxyR)
@@ -707,25 +630,20 @@ linkOnDuplex =
 -- | Link nodes on a specified pair of duplex channels, putting second
 -- (‘client’) node's channels first in the result.
 linkOnDuplex' ::
-     forall n k lcs lcs' lresp lreq rcs rcs' rresp rreq rescs m r.
-     ( Remove k rcs rcs'
-     , Remove n lcs lcs'
-     , Annihilate lreq rresp
-     , Annihilate rreq lresp
-     , Append rcs' lcs' rescs
-     )
-  => IIndex n lcs (Compose lresp lreq) -- ^ The index of the linked
+     forall n k lcs lcs' rcs rcs' rescs m b c r.
+     (Remove k rcs rcs', Remove n lcs lcs', Append rcs' lcs' rescs)
+  => IIndex n lcs (Request b c) -- ^ The index of the linked
      -- channel on the ‘server’ node.
-  -> IIndex k rcs (Compose rresp rreq) -- ^ The index of the linked
+  -> IIndex k rcs (Request c b) -- ^ The index of the linked
      -- channel on the ‘client’ node.
-  -> lreq (Node lcs m r) -- ^ ‘Server’ node.
+  -> (c -> Node lcs m r) -- ^ ‘Server’ node.
   -> Node rcs m r -- ^ ‘Client’ node.
   -> Node rescs m r
 {-# INLINE linkOnDuplex' #-}
 linkOnDuplex' =
   genericLinkOn
-    annihilate
-    annihilate
+    annihilateYield
+    annihilateYield
     getCompose
     getCompose
     (finr proxyR)
@@ -784,3 +702,9 @@ genericLinkOn lannihilate rannihilate ldecompose rdecompose lembed rembed n k =
                           (right', left') -> loop (fmap cont left') right')
                  (\e cont -> lft e (loop' right . cont))
          in loop l r)
+
+annihilateYield :: (a -> x) -> Yield a y -> (x, y)
+annihilateYield f (a, y) = (f a, y)
+
+annihilateIdentity :: Identity x -> Identity y -> (x, y)
+annihilateIdentity (Identity x) (Identity y) = (x, y)

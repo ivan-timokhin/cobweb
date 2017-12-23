@@ -50,27 +50,8 @@ import Control.Monad ((>=>))
 import Control.Monad.Trans (lift)
 import Data.Functor.Compose (Compose(Compose))
 
-import Cobweb.Core
-       (Await, Leaf, Node, Tube, Yield, connectOn, gforOn, i0, i1)
+import Cobweb.Core (Client, Node, Proxy, Request, connectOn, gforOn, i0, i1)
 import Cobweb.Type.Combinators (Append, IIndex, Inductive, Remove)
-
--- | A type of duplex channel, producing values of type @o@ and
--- awaiting values of type @i@ in response.
---
--- Another way to say this, whenever a 'Node' initiates connection on
--- such channel, it makes a request of the type @o@ and awaits
--- response of type @i@.
-type Request o i = Yield o `Compose` Await i
-
--- | A 'Node' with a single duplex channel, that makes requests of
--- type @a@, awaiting @b@ in response.
-type Client a b = Leaf (Request a b)
-
--- | A middleman in a duplex pipeline, exchanges @a'@ for @a@ on an
--- upstream interface, and @b@ for @b'@ on downstream.
---
--- This type is isomorphic to @Proxy@ from @pipes@.
-type Proxy a' a b' b = Tube (Request a' a) (Request b b')
 
 -- | Send a request on the channel with a specified index.
 requestOn :: Inductive cs => IIndex n cs (Request a b) -> a -> Node cs m b

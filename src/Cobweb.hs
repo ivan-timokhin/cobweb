@@ -68,7 +68,6 @@ module Cobweb
   , dropping
     -- * Linking
     -- $link
-  , Annihilate (annihilate)
   , (>->)
   , (|->)
   , (>-|)
@@ -160,7 +159,7 @@ import Cobweb.Fold
   , foldOn
   , foldOn_
   )
-import Cobweb.Link (Annihilate(annihilate), (>->), (>-|), (|->))
+import Cobweb.Link ((>->), (>-|), (|->))
 import Cobweb.Pipe (Pipe, cat, dropping, mapping, mappingM, taking)
 import Cobweb.Producer
   ( Producer

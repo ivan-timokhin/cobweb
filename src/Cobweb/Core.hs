@@ -28,6 +28,9 @@ module Cobweb.Core
   , Pipe
   , Producer
   , Consumer
+  , Request
+  , Client
+  , Proxy
     -- * Running 'Node'
   , run
   , inspect
@@ -71,8 +74,9 @@ module Cobweb.Core
 
 import Data.Bifunctor (first)
 import Data.Foldable (traverse_)
+import Data.Functor.Compose (Compose)
 import Data.Functor.Coyoneda (Coyoneda, hoistCoyoneda)
-import Data.Proxy (Proxy(Proxy))
+import qualified Data.Proxy as P
 
 import Cobweb.Internal (Node, build, cata, inspect, unfold)
 import Cobweb.Type.Combinators
@@ -137,6 +141,24 @@ type Producer a = Leaf (Yield a)
 
 -- | A 'Node' that only receives values on its sole open channel.
 type Consumer a = Leaf (Await a)
+
+-- | A type of duplex channel, producing values of type @o@ and
+-- awaiting values of type @i@ in response.
+--
+-- Another way to say this, whenever a 'Node' initiates connection on
+-- such channel, it makes a request of the type @o@ and awaits
+-- response of type @i@.
+type Request o i = Yield o `Compose` Await i
+
+-- | A 'Node' with a single duplex channel, that makes requests of
+-- type @a@, awaiting @b@ in response.
+type Client a b = Leaf (Request a b)
+
+-- | A middleman in a duplex pipeline, exchanges @a'@ for @a@ on an
+-- upstream interface, and @b@ for @b'@ on downstream.
+--
+-- This type is isomorphic to @Proxy@ from @pipes@.
+type Proxy a' a b' b = Tube (Request a' a) (Request b b')
 
 -- | Run a node with no open channels in the base monad.
 run :: Monad m => Effect m r -> m r
@@ -389,10 +411,10 @@ gforOn n node f = gforAll node body
       case fdecompIdx n con of
         Left other -> connect (finl proxyInner other)
         Right c -> gmapAll (finr proxyOuter) (f c)
-    proxyInner :: Proxy cs'
-    proxyInner = Proxy
-    proxyOuter :: Proxy ocs
-    proxyOuter = Proxy
+    proxyInner :: P.Proxy cs'
+    proxyInner = P.Proxy
+    proxyOuter :: P.Proxy ocs
+    proxyOuter = P.Proxy
 
 -- | Substitute each attempt to communicate on a specified channel
 -- with a computation with a different open channel.
@@ -432,7 +454,7 @@ gforOnLeaf ::
 gforOnLeaf n node f = gforAll node body
   where
     body con =
-      case fdecompReplaceIdx n (Proxy :: Proxy c') con of
+      case fdecompReplaceIdx n (P.Proxy :: P.Proxy c') con of
         Left c -> connect c
         Right c -> gmapAll (finjectIdx newIdx . fsumOnly) (f c)
     newIdx = replaceIdx n
