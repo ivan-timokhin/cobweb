@@ -15,6 +15,7 @@ counterparts in "Cobweb.Core"; these are specialised for 'Consumer's.
 {-# OPTIONS_GHC -Wno-missing-import-lists #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeOperators #-}
 
 module Cobweb.Consumer
@@ -23,7 +24,6 @@ module Cobweb.Consumer
   , await
   , drain
   , discard
-  , contramap
   , contrafor
   , nextRequest
   , consumeOn
@@ -34,17 +34,16 @@ import Prelude hiding (splitAt)
 
 import Control.Monad (forever)
 import Control.Monad.Trans (lift)
-import Data.Functor.Coyoneda (lowerCoyoneda)
+import Data.Functor.Coyoneda (Coyoneda (Coyoneda))
 
 import Cobweb.Core
-  ( Await
+  ( Await(Await)
   , Consumer
   , Leaf
   , Node
   , awaitOn
   , connect
   , contraforOn
-  , contramapOn
   , i0
   , inspectLeaf
   , leafOn
@@ -89,10 +88,6 @@ drain sink = forever $ do
 discard :: Applicative f => a -> f ()
 discard = const (pure ())
 
--- | Apply a function to all incoming values.
-contramap :: (b -> a) -> Consumer a m r -> Consumer b m r
-contramap = contramapOn i0
-
 -- | Loop over a consumer.
 --
 -- Each time the consumer 'await's, second argument is run to
@@ -111,7 +106,10 @@ contrafor = contraforOn i0
 -- 'nextRequest' = 'inspectLeaf'
 -- @
 nextRequest :: Monad m => Consumer a m r -> m (Either r (a -> Consumer a m r))
-nextRequest = fmap (fmap lowerCoyoneda) . inspectLeaf
+nextRequest = fmap (fmap convert) . inspectLeaf
+  where
+    convert :: Coyoneda (Await a) (Consumer a m r) -> a -> Consumer a m r
+    convert (Coyoneda f Await) = f
 
 -- | Embed a 'Consumer' into a larger 'Node', by identifying its sole
 -- input channel with a matching one in a larger list.

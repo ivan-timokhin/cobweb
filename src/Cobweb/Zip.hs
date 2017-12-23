@@ -21,6 +21,7 @@ fashion; zipping is only supported for channels on /different/
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE GADTs #-}
 
 module Cobweb.Zip
   (
@@ -33,14 +34,14 @@ module Cobweb.Zip
     -- * Generic
     -- $generic
   , zipsWith
-  , zips
+  , zipYield
   ) where
 
-import Control.Applicative (liftA2)
 import Control.Monad (forever)
 import Data.Proxy (Proxy(Proxy))
+import Data.Functor.Coyoneda (Coyoneda(Coyoneda))
 
-import Cobweb.Core (Await, Yield, awaitOn, yieldOn)
+import Cobweb.Core (Await, Yield(Yield), awaitOn, yieldOn)
 import Cobweb.Internal (Node, build, cata, unconsNode)
 import Cobweb.Type.Combinators
   ( Append
@@ -131,64 +132,52 @@ zipping3 = zippingWith3 (,,)
 zipsWith ::
      forall n k lcs lcs' rcs rcs' rescs lc rc c m a.
      (Remove n lcs lcs', Remove k rcs rcs', Append lcs' rcs' rescs)
-  => (forall x y. lc x -> rc y -> c (x, y)) -- ^ Combine connections
+  => (forall x y. lc x -> rc y -> Coyoneda c (x, y)) -- ^ Combine connections
      -- on two channels in one.
   -> IIndex n lcs lc -- ^ Index of the zipped channel on the first 'Node'.
   -> IIndex k rcs rc -- ^ Index of the zipped channel on the second 'Node'.
   -> Node lcs m a
   -> Node rcs m a
   -> Node (c : rescs) m a
-zipsWith combine n k l r =
-  build
-    (\ret con lft ->
-       let loopRight lcont lc =
-             unconsNode
-               ret
-               (\c cont ->
-                  case fdecompIdx k c of
-                    Left other ->
-                      con (FInR $ finr proxyL other) (loopRight lcont lc . cont)
-                    Right rc ->
-                      con (FInL $ combine lc rc) (\(x, y) -> lcont x (cont y)))
-               (\e cont -> lft e (loopRight lcont lc . cont))
-       in cata
-            (\a _ -> ret a)
-            (\c cont right ->
-               case fdecompIdx n c of
-                 Left other -> con (FInR $ finl proxyR other) (`cont` right)
-                 Right lc -> loopRight cont lc right)
-            (\e cont right -> lft e (`cont` right))
-            l
-            r)
+zipsWith combine n k l r = build zipCB
   where
+    zipCB ::
+         forall r.
+         (a -> r)
+      -> (forall x. FSum (c : rescs) x -> (x -> r) -> r)
+      -> (forall x. m x -> (x -> r) -> r)
+      -> r
+    zipCB ret con lft =
+      let loopRight :: (x -> Node rcs m a -> r) -> lc x -> Node rcs m a -> r
+          loopRight lcont lc =
+            unconsNode
+              ret
+              (\c cont ->
+                 case fdecompIdx k c of
+                   Left other ->
+                     con (FInR $ finr proxyL other) (loopRight lcont lc . cont)
+                   Right rc ->
+                     case combine lc rc of
+                       Coyoneda f c' ->
+                         con
+                           (FInL c')
+                           (\z ->
+                              case f z of
+                                (x, y) -> lcont x (cont y)))
+              (\e cont -> lft e (loopRight lcont lc . cont))
+      in cata
+           (\a _ -> ret a)
+           (\c cont right ->
+              case fdecompIdx n c of
+                Left other -> con (FInR $ finl proxyR other) (`cont` right)
+                Right lc -> loopRight cont lc right)
+           (\e cont right -> lft e (`cont` right))
+           l
+           r
     proxyL :: Proxy lcs'
     proxyL = Proxy
     proxyR :: Proxy rcs'
     proxyR = Proxy
 
--- | Same as 'zipsWith', but use 'Applicative' instance of the common
--- channel to merge connections.
---
--- For common channel types, this means
---
---  [@'Yield' a@] adds a 'Monoid' constraint on @a@, and combines
---                   yielded values via 'mappend'.
---
---  [@'Await' a@] receive one value, then use it to satisfy both
---                   requests.
---
--- @
--- 'zips' = 'zipsWith' ('liftA2' (,))
--- @
-zips ::
-     ( Remove n lcs lcs'
-     , Remove k rcs rcs'
-     , Append lcs' rcs' rescs
-     , Applicative c
-     )
-  => IIndex n lcs c -- ^ Index of the zipped channel on the first 'Node'.
-  -> IIndex k rcs c -- ^ Index of the zipped channel on the second 'Node'.
-  -> Node lcs m r
-  -> Node rcs m r
-  -> Node (c : rescs) m r
-zips = zipsWith (liftA2 (,))
+zipYield :: (a -> b -> c) -> Yield a x -> Yield b y -> Coyoneda (Yield c) (x, y)
+zipYield f (Yield a) (Yield b) = Coyoneda (const ((), ())) (Yield (f a b))

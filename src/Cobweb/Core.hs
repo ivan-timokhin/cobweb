@@ -12,6 +12,7 @@ This module provides the core functionality of the library: core type
 {-# OPTIONS_HADDOCK show-extensions #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
@@ -23,14 +24,15 @@ module Cobweb.Core
   , Effect
   , Tube
   , Leaf
-  , Yield
-  , Await
+  , Yield(Yield)
+  , Await(Await)
   , Pipe
   , Producer
   , Consumer
-  , Request
+  , Request(Request)
   , Client
   , Proxy
+  , mapYield
     -- * Running 'Node'
   , run
   , inspect
@@ -61,7 +63,6 @@ module Cobweb.Core
   , gmapAll
   , gmapOn
   , mapOn
-  , contramapOn
     -- * Looping over 'Node's
   , gforAll
   , gforOn
@@ -72,9 +73,7 @@ module Cobweb.Core
   , contraforOnLeaf
   ) where
 
-import Data.Bifunctor (first)
 import Data.Foldable (traverse_)
-import Data.Functor.Compose (Compose)
 import Data.Functor.Coyoneda (Coyoneda, hoistCoyoneda)
 import qualified Data.Proxy as P
 
@@ -124,13 +123,15 @@ type Leaf c = Node '[ c]
 -- producing values of type @a@ on this channel.
 --
 -- __See also__: 'yieldOn', 'Producer'
-type Yield = (,)
+data Yield a b where
+  Yield :: a -> Yield a ()
 
 -- | A channel type of @'Await' a@ implies that a 'Node' is
 -- receiving values of type @a@ on this channel.
 --
 -- __See also__: 'awaitOn', 'Consumer'
-type Await = (->)
+data Await a b where
+  Await :: Await a a
 
 -- | A 'Node' that receives values on its first channel, and produces
 -- values on the second one.
@@ -148,7 +149,8 @@ type Consumer a = Leaf (Await a)
 -- Another way to say this, whenever a 'Node' initiates connection on
 -- such channel, it makes a request of the type @o@ and awaits
 -- response of type @i@.
-type Request o i = Yield o `Compose` Await i
+data Request o i a where
+  Request :: o -> Request o i i
 
 -- | A 'Node' with a single duplex channel, that makes requests of
 -- type @a@, awaiting @b@ in response.
@@ -159,6 +161,9 @@ type Client a b = Leaf (Request a b)
 --
 -- This type is isomorphic to @Proxy@ from @pipes@.
 type Proxy a' a b' b = Tube (Request a' a) (Request b b')
+
+mapYield :: (a -> b) -> Yield a c -> Yield b c
+mapYield f (Yield a) = Yield (f a)
 
 -- | Run a node with no open channels in the base monad.
 run :: Monad m => Effect m r -> m r
@@ -210,7 +215,7 @@ connectOn n con = connect (finjectIdx n con)
 -- @
 yieldOn :: Inductive cs => IIndex n cs (Yield a) -> a -> Node cs m ()
 {-# INLINE yieldOn #-}
-yieldOn n a = connectOn n (a, ())
+yieldOn n a = connectOn n (Yield a)
 
 -- | Yield all elements of a container on a specified channel.
 --
@@ -230,7 +235,7 @@ eachOn n = traverse_ (yieldOn n)
 -- @
 awaitOn :: Inductive cs => IIndex n cs (Await a) -> Node cs m a
 {-# INLINE awaitOn #-}
-awaitOn n = connectOn n id
+awaitOn n = connectOn n Await
 
 -- | Run an entire 'Leaf' within a bigger (in terms of channels)
 -- 'Node', by identifying 'Leaf's sole channel with one of the
@@ -318,43 +323,7 @@ mapOn ::
   -> (a -> b) -- ^ A function to apply to outgoing elements.
   -> Node cs m r -- ^ An old 'Node'.
   -> Node cs' m r -- ^ Same node, but with the channel replaced.
-mapOn n f = gmapOn n (first f)
-
--- | Transform an incoming stream of values on a specified channel.
---
--- @
--- 'contramapOn' n f = 'gmapOn' n (\\g -> g . f)
--- @
---
--- ====__Signatures for some specific indices__
--- @
--- 'contramapOn' 'i0' ::
---      ('Functor' m, 'All' 'Functor' cs)
---   => (b -> a)
---   -> 'Node' ('Await' a : cs) m r
---   -> 'Node' ('Await' b : cs) m r
---
--- 'contramapOn' 'i1' ::
---      ('Functor' m, 'Functor' c0, 'All' 'Functor' cs)
---   => (b -> a)
---   -> 'Node' (c0 : 'Await' a : cs) m r
---   -> 'Node' (c0 : 'Await' b : cs) m r
---
--- 'contramapOn' 'i2' ::
---      ('Functor' m, 'Functor' c0, 'Functor' c1, 'All' 'Functor' cs)
---   => (b -> a)
---   -> 'Node' (c0 : c1 : 'Await' a : cs) m r
---   -> 'Node' (c0 : c1 : 'Await' b : cs) m r
--- @
-contramapOn ::
-     Replace n cs (Await b) cs'
-  => IIndex n cs (Await a) -- ^ Index of the channel to be mapped
-                              -- over.
-  -> (b -> a) -- ^ The function to transform values received by a new
-     -- 'Node' into the ones requested by the old one.
-  -> Node cs m r -- ^ Original 'Node'.
-  -> Node cs' m r -- ^ Same 'Node', but with the channel replaced.
-contramapOn n f = gmapOn n (. f)
+mapOn n f = gmapOn n (mapYield f)
 
 -- | Replace the current list of channels by substituting a
 -- computation with new channels for each communication attempt.
@@ -407,6 +376,7 @@ gforOn ::
   -> Node rescs m r
 gforOn n node f = gforAll node body
   where
+    body :: FSum cs x -> Node rescs m x
     body con =
       case fdecompIdx n con of
         Left other -> connect (finl proxyInner other)
@@ -453,6 +423,7 @@ gforOnLeaf ::
   -> Node cs' m r
 gforOnLeaf n node f = gforAll node body
   where
+    body :: FSum cs x -> Node cs' m x
     body con =
       case fdecompReplaceIdx n (P.Proxy :: P.Proxy c') con of
         Left c -> connect c
@@ -495,7 +466,7 @@ forOn ::
   -> Node cs m r -- ^ A source of values to loop over.
   -> (a -> Node cs' m ()) -- ^ Loop body.
   -> Node rescs m r
-forOn n node f = gforOn n node (\(a, r) -> r <$ f a)
+forOn n node f = gforOn n node (\(Yield a) -> f a)
 
 -- | Same as 'forOn', but new channel is substituted in-place for the
 -- old one.
@@ -521,12 +492,15 @@ forOn n node f = gforOn n node (\(a, r) -> r <$ f a)
 --    -> 'Node' (c0 : c1 : c : cs) m r
 -- @
 forOnLeaf ::
-     Replace n cs c cs'
+     forall n cs c cs' a r m. Replace n cs c cs'
   => IIndex n cs (Yield a) -- ^ A channel over which to loop.
   -> Node cs m r -- ^ A source of values to loop over.
   -> (a -> Leaf c m ()) -- ^ Loop body.
   -> Node cs' m r
-forOnLeaf n node f = gforOnLeaf n node (\(a, r) -> r <$ f a)
+forOnLeaf n node f = gforOnLeaf n node body
+  where
+    body :: Yield a x -> Leaf c m x
+    body (Yield a) = f a
 
 -- | Loop over a 'Node', replacing each 'awaitOn' the specified
 -- channel by the loop body, which should provide the value asked for.
@@ -565,7 +539,7 @@ contraforOn ::
   -> Node cs' m a -- ^ A provider of values, run once for each
                   -- 'awaitOn'.
   -> Node rescs m r
-contraforOn n node body = gforOn n node (<$> body)
+contraforOn n node body = gforOn n node (\Await -> body)
 
 -- | Same as 'contraforOn', but new channel is substituted in-place for the
 -- old one.
@@ -591,12 +565,16 @@ contraforOn n node body = gforOn n node (<$> body)
 --    -> 'Node' (c0 : c1 : c : cs) m r
 -- @
 contraforOnLeaf ::
-     Replace n cs c cs'
+     forall n cs c cs' a m r. Replace n cs c cs'
   => IIndex n cs (Await a) -- ^ A channel over which to loop.
   -> Node cs m r -- ^ A receiver of values.
-  -> Leaf c m a -- ^ A provider of values, run once for each 'awaitOn'.
+  -> Leaf c m a -- ^ A provider of values, run once for each
+                -- 'awaitOn'.
   -> Node cs' m r
-contraforOnLeaf n node body = gforOnLeaf n node (<$> body)
+contraforOnLeaf n node body = gforOnLeaf n node body'
+  where
+    body' :: Await a b -> Leaf c m b
+    body' Await = body
 
 -- $indices
 --

@@ -40,14 +40,12 @@ module Cobweb.Fuse
   ( fuse
   , fuseWith
   , fuseWithMap
-  , fuseWithContramap
   , fuseAll
   ) where
 
-import Data.Bifunctor (first)
 import Data.Type.Equality (type (==))
 
-import Cobweb.Core (Await, Leaf, Yield, gmapAll)
+import Cobweb.Core (Leaf, Yield, gmapAll, mapYield)
 import Cobweb.Internal (Node)
 import Cobweb.Type.Combinators
   ( AllEqual
@@ -170,18 +168,7 @@ fuseWithMap ::
   -> IIndex k cs (Yield b) -- ^ Index of the replaced channel.
   -> Node cs m r
   -> Node cs'' m r
-fuseWithMap f g = fuseWith (first f) (first g)
-
--- | A specialisation of 'fuseWith' for 'Await' channels.
-fuseWithContramap ::
-     ((n == k) ~ 'False, Replace k cs (Await c) cs', Remove n cs' cs'')
-  => (c -> a) -- ^ Transform the values on the first channel.
-  -> (c -> b) -- ^ Transform the values on the second channel.
-  -> IIndex n cs (Await a) -- ^ Index of the removed channel.
-  -> IIndex k cs (Await b) -- ^ Index of the replaced channel.
-  -> Node cs m r
-  -> Node cs'' m r
-fuseWithContramap f g = fuseWith (. f) (. g)
+fuseWithMap f g = fuseWith (mapYield f) (mapYield g)
 
 -- | Given a 'Node' with /all/ channels identical, fuse them all
 -- together.

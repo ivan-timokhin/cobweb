@@ -128,12 +128,7 @@ zips =
     , testProperty "zips" $ \lst1 lst2 ->
         runIdentity
           (WF.toListN_ $
-           WZ.zipsWith
-             (\(a, x) (b, y) -> ((a, b), (x, y)))
-             W.i0
-             W.i0
-             (W.each lst1)
-             (W.each lst2)) ==
+           WZ.zipsWith (WZ.zipYield (,)) W.i0 W.i0 (W.each lst1) (W.each lst2)) ==
         (zip lst1 lst2 :: [(Char, Int)])
     ]
 

@@ -36,12 +36,12 @@ import Prelude hiding (span, splitAt)
 import Control.Monad (forever)
 import Control.Monad.Trans (lift)
 import Type.Family.List (Last, Null)
-import Data.Functor.Coyoneda (lowerCoyoneda)
+import Data.Functor.Coyoneda (Coyoneda(Coyoneda))
 
 import Cobweb.Core
   ( Leaf
   , Producer
-  , Yield
+  , Yield(Yield)
   , connect
   , eachOn
   , forOn
@@ -108,7 +108,10 @@ for = forOn i0
 -- value.  In the latter case, returns the value along with the rest
 -- of the 'Producer'
 next :: Monad m => Producer a m r -> m (Either r (a, Producer a m r))
-next = fmap (fmap lowerCoyoneda) . inspectLeaf
+next = fmap (fmap convert) . inspectLeaf
+  where
+    convert :: Coyoneda (Yield a) (Producer a m r) -> (a, Producer a m r)
+    convert (Coyoneda f (Yield a)) = (a, f ())
 
 -- | Embed a 'Producer' into a larger 'Node', by identifying its sole
 -- output channel with a matching channel in the outer 'Node'.
@@ -149,7 +152,7 @@ span predicate node =
              unconsNode
                (ret . pure)
                (\cs cont ->
-                  let (a, _) = fsumOnly cs
+                  let Yield a = fsumOnly cs
                   in if predicate a
                        then con cs (loop . cont)
                        else ret (connect cs >>= cont))

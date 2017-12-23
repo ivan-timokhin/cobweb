@@ -20,6 +20,7 @@ functor-generic functions (e.g. 'gforOn') or functions in this module.
 {-# OPTIONS_HADDOCK show-extensions #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Cobweb.Group
@@ -41,7 +42,15 @@ import Control.Monad.Trans (lift)
 import GHC.Stack (HasCallStack)
 
 import qualified Cobweb.Consumer as C
-import Cobweb.Core (Leaf, Producer, connect, gforOn, i0, yieldOn)
+import Cobweb.Core
+  ( Leaf
+  , Producer
+  , Yield(Yield)
+  , connect
+  , gforOn
+  , i0
+  , yieldOn
+  )
 import Cobweb.Internal (build, unconsNode)
 import qualified Cobweb.Producer as P
 import Cobweb.Type.Combinators (FSum(FInL), fsumOnly)
@@ -100,7 +109,7 @@ groupBy eq node =
              unconsNode
                ret
                (\c cont ->
-                  let !(a, _) = fsumOnly c
+                  let !(Yield a) = fsumOnly c
                   in con (FInL $ connect c >>= (P.span (eq a) . cont)) loop)
                (\e cont -> lft e (loop . cont))
        in loop node)

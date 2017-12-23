@@ -23,6 +23,7 @@ that the whole process happens in constant space.
 -}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Cobweb.Fold
@@ -48,7 +49,7 @@ module Cobweb.Fold
 
 import Data.Proxy (Proxy(Proxy))
 
-import Cobweb.Core (Producer, Yield)
+import Cobweb.Core (Producer, Yield(Yield))
 import Cobweb.Internal (Node, cata, build)
 import Cobweb.Type.Combinators
   ( IIndex
@@ -78,9 +79,9 @@ foldNode comb !seed fin node =
     (\r !x -> pure (fin x, r))
     (\c cont !x ->
        case fsumOnly c of
-         (a, y) ->
+         Yield a ->
            let !x' = x `comb` a
-           in cont y x')
+           in cont () x')
     (\e cont !x -> e >>= (`cont` x))
     node
     seed
@@ -112,9 +113,9 @@ foldMNode comb seed fin node = do
        pure (b, r))
     (\c cont !x ->
        case fsumOnly c of
-         (a, y) -> do
+         Yield a -> do
            !x' <- x `comb` a
-           cont y x')
+           cont () x')
     (\e cont !x -> e >>= (`cont` x))
     node
     z
@@ -144,9 +145,9 @@ foldOn n comb !seed fin node =
          (\r !x -> ret (fin x, r))
          (\c cont !x ->
             case fdecompIdx n c of
-              Right (a, y) ->
+              Right (Yield a) ->
                 let !x' = x `comb` a
-                in cont y x'
+                in cont () x'
               Left other -> con other (`cont` x))
          (\e cont !x -> lft e (`cont` x))
          node
@@ -185,7 +186,7 @@ foldMOn n comb seed fin node =
          (\r !x -> lft (fin x) (\ !b -> ret (b, r)))
          (\c cont !x ->
             case fdecompIdx n c of
-              Right (a, y) -> lft (x `comb` a) (\ !x' -> cont y x')
+              Right (Yield a) -> lft (x `comb` a) (\ !x' -> cont () x')
               Left other -> con other (`cont` x))
          (\e cont !x -> lft e (`cont` x))
          node)
@@ -251,15 +252,15 @@ scanOn ::
 scanOn n comb !seed fin node =
   build
     (\ret con lft ->
-       con (finjectIdx n' (fin seed, ())) . const $
+       con (finjectIdx n' (Yield (fin seed))) . const $
        cata
          (\r !_ -> ret r)
          (\c cont !x ->
             case fdecompReplaceIdx n (Proxy :: Proxy (Yield b)) c of
               Left other -> con other (`cont` x)
-              Right (a, y) ->
+              Right (Yield a) ->
                 let !x' = x `comb` a
-                in con (finjectIdx n' (fin x', ())) . const $ cont y x')
+                in con (finjectIdx n' (Yield (fin x'))) . const $ cont () x')
          (\e cont !x -> lft e (`cont` x))
          node
          seed)
@@ -313,16 +314,16 @@ scanOnM n comb seed fin node =
     (\ret con lft ->
        lft seed $ \ !seed' ->
          lft (fin seed') $ \b ->
-           con (finjectIdx n' (b, ())) . const $
+           con (finjectIdx n' (Yield b)) . const $
            cata
              (\r !_ -> ret r)
              (\c cont !x ->
                 case fdecompReplaceIdx n (Proxy :: Proxy (Yield b)) c of
                   Left other -> con other (`cont` x)
-                  Right (a, y) ->
+                  Right (Yield a) ->
                     lft (x `comb` a) $ \ !x' ->
                       lft (fin x') $ \b' ->
-                        con (finjectIdx n' (b', ())) . const $ cont y x')
+                        con (finjectIdx n' (Yield b')) . const $ cont () x')
              (\e cont !x -> lft e (`cont` x))
              node
              seed')

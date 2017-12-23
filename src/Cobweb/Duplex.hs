@@ -42,20 +42,30 @@ request and response—which are combined via 'Compose'.
 -}
 {-# OPTIONS_HADDOCK show-extensions #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Cobweb.Duplex where
 
 import Control.Monad ((>=>))
 import Control.Monad.Trans (lift)
-import Data.Functor.Compose (Compose(Compose))
 
-import Cobweb.Core (Client, Node, Proxy, Request, connectOn, gforOn, i0, i1)
+import Cobweb.Core
+  ( Client
+  , Node
+  , Proxy
+  , Request(Request)
+  , connectOn
+  , gforOn
+  , i0
+  , i1
+  )
 import Cobweb.Type.Combinators (Append, IIndex, Inductive, Remove)
 
 -- | Send a request on the channel with a specified index.
 requestOn :: Inductive cs => IIndex n cs (Request a b) -> a -> Node cs m b
-requestOn n x = connectOn n (Compose (x, id))
+requestOn n x = connectOn n (Request x)
 
 -- | Use the provided function to serve incoming requests.
 --
@@ -237,11 +247,12 @@ pullProxy fwd bwd = loop
 -- | Iterate over specified duplex channel, replacing calls to
 -- 'requestOn' with the loop body.
 forOnDuplex ::
-     (Remove n cs ocs, Append ocs cs' rescs)
+     forall n cs ocs cs' rescs a b m r. (Remove n cs ocs, Append ocs cs' rescs)
   => IIndex n cs (Request a b) -- ^ Index of the channel.
   -> Node cs m r
   -> (a -> Node cs' m b) -- ^ Replacement for 'requestOn'.
   -> Node rescs m r
 forOnDuplex n node f = gforOn n node body
   where
-    body (Compose (a, fb)) = fmap fb (f a)
+    body :: Request a b x -> Node cs' m x
+    body (Request a) = f a

@@ -45,14 +45,13 @@ module Cobweb.Link
   , genericLinkOn
   ) where
 
-import Data.Functor.Compose (Compose(getCompose))
 import Data.Functor.Identity (Identity(Identity))
 import Data.Proxy (Proxy(Proxy))
 import Type.Class.Witness (Witness((\\)))
 import Type.Family.List (Last, Null)
 import Type.Family.Nat (Len, Pred)
 
-import Cobweb.Core (Await, Request, Yield)
+import Cobweb.Core (Await(Await), Request(Request), Yield(Yield))
 import Cobweb.Internal (Node, unconsNode, build)
 import Cobweb.Type.Combinators
   ( Append
@@ -305,8 +304,8 @@ linkOn n k =
   genericLinkOn
     annihilateIdentity
     annihilateYield
-    (fmap Identity)
-    Identity
+    decomposeYield
+    decomposeAwait
     (finl proxyR)
     (finr proxyL)
     n
@@ -342,8 +341,8 @@ linkOn' n k =
   genericLinkOn
     annihilateIdentity
     annihilateYield
-    (fmap Identity)
-    Identity
+    decomposeYield
+    decomposeAwait
     (finr proxyR)
     (finl proxyL)
     n
@@ -352,6 +351,12 @@ linkOn' n k =
   where
     proxyR = Proxy :: Proxy rcs'
     proxyL = Proxy :: Proxy lcs'
+
+decomposeYield :: Yield a b -> (a, Identity b)
+decomposeYield (Yield a) = (a, Identity ())
+
+decomposeAwait :: Await a b -> Identity (a -> b)
+decomposeAwait Await = Identity id
 
 -- $duplex
 --
@@ -617,8 +622,8 @@ linkOnDuplex =
   genericLinkOn
     annihilateYield
     annihilateYield
-    getCompose
-    getCompose
+    decomposeRequest
+    decomposeRequest
     (finl proxyR)
     (finr proxyL)
   where
@@ -644,8 +649,8 @@ linkOnDuplex' =
   genericLinkOn
     annihilateYield
     annihilateYield
-    getCompose
-    getCompose
+    decomposeRequest
+    decomposeRequest
     (finr proxyR)
     (finl proxyL)
   where
@@ -653,6 +658,9 @@ linkOnDuplex' =
     proxyR = Proxy
     proxyL :: Proxy lcs'
     proxyL = Proxy
+
+decomposeRequest :: Request o i x -> (o, i -> x)
+decomposeRequest (Request o) = (o, id)
 
 -- | The most generic linking function, used to implement all other
 -- function in this module.  Calling it directly is practically never
@@ -703,7 +711,7 @@ genericLinkOn lannihilate rannihilate ldecompose rdecompose lembed rembed n k =
                  (\e cont -> lft e (loop' right . cont))
          in loop l r)
 
-annihilateYield :: (a -> x) -> Yield a y -> (x, y)
+annihilateYield :: (a -> x) -> (a, y) -> (x, y)
 annihilateYield f (a, y) = (f a, y)
 
 annihilateIdentity :: Identity x -> Identity y -> (x, y)
