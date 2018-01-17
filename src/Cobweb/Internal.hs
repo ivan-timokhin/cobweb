@@ -71,7 +71,7 @@ import Control.Monad.Writer.Class
   ( MonadWriter(listen, pass, tell, writer)
   , censor
   )
-import Data.Functor.Coyoneda (Coyoneda(Coyoneda))
+import Data.Functor.Coyoneda (liftCoyoneda, lowerCoyoneda, Coyoneda(Coyoneda))
 import Data.Functor.Sum (Sum(InL, InR))
 
 import Cobweb.Type.Combinators (FSum)
@@ -103,7 +103,7 @@ unconsNode ::
   -> (forall x. m x -> (x -> Node cs m a) -> r)
   -> Node cs m a
   -> r
-{-# INLINE unconsNode #-}
+{-# INLINE[0] unconsNode #-}
 unconsNode ret _ _ (Pure a) = ret a
 unconsNode _ con eff (Impure i k) =
   case i of
@@ -123,29 +123,51 @@ unconsNode _ con eff (Impure i k) =
 
 -- | Fold a 'Node'
 cata ::
+      forall cs m a r.
+      (a -> r)
+   -> (forall x. FSum cs x -> (x -> r) -> r)
+   -> (forall x. m x -> (x -> r) -> r)
+   -> Node cs m a
+   -> r
+{-# INLINE cata #-}
+cata algR algC algE = cata_ algR algC' algE'
+  where
+    algC' :: Coyoneda (FSum cs) r -> r
+    algC' (Coyoneda f c) = algC c f
+    algE' :: Coyoneda m r -> r
+    algE' (Coyoneda f e) = algE e f
+
+-- This entire Coyoneda dance is rather ridiculous, but,
+-- unfortunately, either GHC currently cannot stomach what would be a
+-- rank-3 type rule, or I just lack the ability to trick it into doing
+-- that.  Luckily, hiding one 'forall' inside a Coyoneda allows the
+-- rule to fire normally; in fact, in this variant, the rewrite rules
+-- almost exactly mimic the list fold/build fusion, which hopefully
+-- means some protection against accidental breakage.
+cata_ ::
      forall cs m a r.
      (a -> r)
-  -> (forall x. FSum cs x -> (x -> r) -> r)
-  -> (forall x. m x -> (x -> r) -> r)
+  -> (Coyoneda (FSum cs) r -> r)
+  -> (Coyoneda m r -> r)
   -> Node cs m a
   -> r
-{-# INLINE cata #-}
-cata algR algC algE = loop
+{-# INLINE[0] cata_ #-}
+cata_ algR algC algE = loop
   where
     loop :: Node cs m a -> r
     loop =
       unconsNode
         algR
-        (\c cont -> algC c (loop . cont))
-        (\e cont -> algE e (loop . cont))
+        (\c cont -> algC (Coyoneda (loop . cont) c))
+        (\e cont -> algE (Coyoneda (loop . cont) e))
 
-buildCon :: FSum cs x -> (x -> Node cs m a) -> Node cs m a
-{-# INLINE buildCon #-}
-buildCon fs = Impure (InR fs) . Leaf . Kleisli
+buildCon :: Coyoneda (FSum cs) (Node cs m a) -> Node cs m a
+{-# INLINE[0] buildCon #-}
+buildCon (Coyoneda f cs) = Impure (InR cs) . Leaf . Kleisli $ f
 
-buildEff :: m x -> (x -> Node cs m a) -> Node cs m a
-{-# INLINE buildEff #-}
-buildEff e = Impure (InL e) . Leaf . Kleisli
+buildEff :: Coyoneda m (Node cs m a) -> Node cs m a
+{-# INLINE[0] buildEff #-}
+buildEff (Coyoneda f m) = Impure (InL m) . Leaf . Kleisli $ f
 
 build ::
      (forall r.
@@ -155,7 +177,52 @@ build ::
       -> r)
   -> Node cs m a
 {-# INLINE build #-}
-build f = f Pure buildCon buildEff
+build n =
+  build_
+    (\ret con lft ->
+       n
+         ret
+         (\c cont -> con (Coyoneda cont c))
+         (\e cont -> lft (Coyoneda cont e)))
+
+build_ ::
+     (forall r. (a -> r) -> (Coyoneda (FSum cs) r -> r) -> (Coyoneda m r -> r) -> r)
+  -> Node cs m a
+{-# INLINE[1] build_ #-}
+build_ f = f Pure buildCon buildEff
+
+augment ::
+     (forall r. (a -> r) -> (Coyoneda (FSum cs) r -> r) -> (Coyoneda m r -> r) -> r)
+  -> (a -> Node cs m b)
+  -> Node cs m b
+{-# INLINE[1] augment #-}
+augment n f = n f buildCon buildEff
+
+{-# RULES
+"cata/build"
+  forall
+    ret
+    con
+    lft
+    (node :: forall r.
+                 (a -> r)
+              -> (Coyoneda (FSum cs) r -> r)
+              -> (Coyoneda m r -> r)
+              -> r).
+  cata_ ret con lft (build_ node) = node ret con lft
+"cata/augment"
+  forall
+    ret
+    con
+    lft
+    (node :: forall r.
+                 (a -> r)
+              -> (Coyoneda (FSum cs) r -> r)
+              -> (Coyoneda m r -> r)
+              -> r)
+    (f :: a -> Node cs m b).
+  cata_ ret con lft (augment node f) = node (cata_ ret con lft . f) con lft
+#-}
 
 instance Functor (Node cs m) where
   fmap = liftM
@@ -167,11 +234,25 @@ instance Applicative (Node cs m) where
 
 instance Monad (Node cs m) where
   (>>=) = bind_
+  (>>) = bindConst_
 
 bind_ :: Node cs m a -> (a -> Node cs m b) -> Node cs m b
 {-# INLINE[0] bind_ #-}
 bind_ (Pure x) f = f x
 bind_ (Impure x k) f = Impure x (k |> Kleisli f)
+
+bindConst_ :: Node cs m a -> Node cs m b -> Node cs m b
+{-# INLINE bindConst_ #-}
+bindConst_ x = bind_ x . const
+
+{-# RULES
+"bind_"[~1]
+  forall n.
+  bind_ n = augment (\ret con lft -> cata_ ret con lft n)
+"uncata"[1]
+  forall ret.
+  cata_ ret buildCon buildEff = (`bind_` ret)
+#-}
 
 instance MonadTrans (Node cs) where
   lift eff = build (\ret _ lft -> lft eff ret)
@@ -190,10 +271,11 @@ liftCatch ::
   -> (e -> Node cs m a)
   -> Node cs m a
 liftCatch catchBase node handler =
-  cata
+  cata_
     Pure
     buildCon
-    (\eff cont -> buildEff (fmap cont eff `catchBase` (pure . handler)) id)
+    (\eff ->
+       buildEff $ liftCoyoneda (lowerCoyoneda eff `catchBase` (pure . handler)))
     node
 
 instance MonadError e m => MonadError e (Node cs m) where

@@ -83,6 +83,7 @@ benchmark criterion
                        -ddump-to-file
                        -ddump-simpl-stats
                        -ddump-rule-rewrites
+                       -ddump-simpl-iterations
   type:                exitcode-stdio-1.0
   main-is:             Bench.hs
   other-modules:       Bench.Sum
