@@ -37,11 +37,25 @@ benchSum n =
         , bench "streaming" $ whnf sumS' n
         , bench "list" $ whnf sumL' n
         ]
+    , bgroup
+        "left"
+        [ bench "cobweb" $ whnf sumWL n
+        ]
     ]
 
 sumW :: Int -> Int
 {-# NOINLINE sumW #-}
 sumW n = runIdentity $ W.foldNode_ (+) 0 id (W.each [1 .. n])
+
+sumWL :: Int -> Int
+{-# NOINLINE sumWL #-}
+sumWL n = runIdentity $ W.foldNode_ (+) 0 id (producer n)
+  where
+    producer :: Int -> W.Producer Int Identity ()
+    producer 0 = pure ()
+    producer k = do
+      producer (k - 1)
+      W.yield k
 
 producerW :: Int -> W.Producer Int Identity ()
 {-# NOINLINE producerW #-}
