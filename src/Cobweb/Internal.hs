@@ -72,7 +72,6 @@ import Control.Monad.Writer.Class
   , censor
   )
 import Data.Functor.Coyoneda (liftCoyoneda, lowerCoyoneda, Coyoneda(Coyoneda))
-import Data.Functor.Sum (Sum(InL, InR))
 
 import Cobweb.Type.Combinators (FSum)
 import Cobweb.Internal.Cat (Cat(Cat, Leaf), (|>), unconsCat)
@@ -94,7 +93,8 @@ import Cobweb.Internal.Cat (Cat(Cat, Leaf), (|>), unconsCat)
 -- 'Cobweb.Core.Await' for @(->)@.
 data Node cs m a where
   Pure :: a -> Node cs m a
-  Impure :: Sum m (FSum cs) x -> Cat (Kleisli (Node cs m)) x a -> Node cs m a
+  Connect :: FSum cs x -> Cat (Kleisli (Node cs m)) x a -> Node cs m a
+  Effect :: m x -> Cat (Kleisli (Node cs m)) x a -> Node cs m a
 
 unconsNode ::
   forall a r cs m.
@@ -104,13 +104,11 @@ unconsNode ::
   -> Node cs m a
   -> r
 {-# INLINE[0] unconsNode #-}
-unconsNode ret _ _ (Pure a) = ret a
-unconsNode _ con eff (Impure i k) =
-  case i of
-    InL e -> eff e cont
-    InR c -> con c cont
+unconsNode ret con eff = \case
+  Pure a -> ret a
+  Connect c k -> con c (unconsCat runKleisli loop k)
+  Effect e k -> eff e (unconsCat runKleisli loop k)
   where
-    cont = unconsCat runKleisli loop k
     loop ::
          Kleisli (Node cs m) y x
       -> Cat (Kleisli (Node cs m)) x a
@@ -119,7 +117,8 @@ unconsNode _ con eff (Impure i k) =
     loop kl cat y =
       case runKleisli kl y of
         Pure x -> unconsCat runKleisli loop cat x
-        Impure i' cat' -> Impure i' (Cat cat' cat)
+        Effect e' cat' -> Effect e' (Cat cat' cat)
+        Connect c' cat' -> Connect c' (Cat cat' cat)
 
 -- | Fold a 'Node'
 cata ::
@@ -163,11 +162,11 @@ cata_ algR algC algE = loop
 
 buildCon :: Coyoneda (FSum cs) (Node cs m a) -> Node cs m a
 {-# INLINE[0] buildCon #-}
-buildCon (Coyoneda f cs) = Impure (InR cs) . Leaf . Kleisli $ f
+buildCon (Coyoneda f cs) = Connect cs . Leaf . Kleisli $ f
 
 buildEff :: Coyoneda m (Node cs m a) -> Node cs m a
 {-# INLINE[0] buildEff #-}
-buildEff (Coyoneda f m) = Impure (InL m) . Leaf . Kleisli $ f
+buildEff (Coyoneda f m) = Effect m . Leaf . Kleisli $ f
 
 build ::
      (forall r.
@@ -239,7 +238,8 @@ instance Monad (Node cs m) where
 bind_ :: Node cs m a -> (a -> Node cs m b) -> Node cs m b
 {-# INLINE[0] bind_ #-}
 bind_ (Pure x) f = f x
-bind_ (Impure x k) f = Impure x (k |> Kleisli f)
+bind_ (Connect x k) f = Connect x (k |> Kleisli f)
+bind_ (Effect e k) f = Effect e (k |> Kleisli f)
 
 bindConst_ :: Node cs m a -> Node cs m b -> Node cs m b
 {-# INLINE bindConst_ #-}
