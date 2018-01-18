@@ -69,6 +69,22 @@ test-suite tasty
                       , QuickCheck
   default-language:     Haskell2010
 
+test-suite inspection
+  hs-source-dirs:       inspection
+  ghc-options:          -Wall
+                        -Wincomplete-uni-patterns
+                        -Wincomplete-record-updates
+                        -Wmissing-import-lists
+                        -Widentities
+                        -O2
+  type:                 exitcode-stdio-1.0
+  main-is:              Main.hs
+  build-depends:        base >= 4.7 && < 5
+                      , cobweb
+                      , inspection-testing
+                      , mtl
+  default-language:     Haskell2010
+
 benchmark criterion
   default-language:    Haskell2010
   hs-source-dirs:      benchmark

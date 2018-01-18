@@ -256,6 +256,7 @@ bindConst_ x = bind_ x . const
 
 instance MonadTrans (Node cs) where
   lift eff = build (\ret _ lft -> lft eff ret)
+  {-# INLINE lift #-}
 
 instance MonadIO m => MonadIO (Node cs m) where
   liftIO = lift . liftIO
