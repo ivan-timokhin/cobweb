@@ -42,7 +42,7 @@ import qualified Control.Monad.Writer.Strict as WS
 import qualified Control.Monad.Writer.Lazy as WL
 
 import Cobweb.Core (Node, connect, gforAll, run)
-import Cobweb.Internal (build, cata, unsafeHoist)
+import Cobweb.Internal (build, cata)
 
 -- | Move a single transformer layer from ‘beneath’ the 'Node' to
 -- ‘above’ it.
@@ -65,7 +65,7 @@ distribute node
   --
   -- Finally, now that the outer layer has no outstanding connections,
   -- we simply run it.
- = run $ gforAll (unsafeHoist (hoist lift) node) (lift . lift . connect)
+ = run $ gforAll (hoist (hoist lift) node) (lift . lift . connect)
 
 -- | Run 'SS.StateT', returning both final state and result.
 runStateN :: Monad m => Node cs (SS.StateT s m) a -> s -> Node cs m (a, s)

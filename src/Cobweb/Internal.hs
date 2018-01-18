@@ -47,7 +47,6 @@ module Cobweb.Internal
   , cata
   , build
   , unconsNode
-  , unsafeHoist
   , inspect
   , unfold
   , observe
@@ -292,7 +291,7 @@ instance MonadReader r m => MonadReader r (Node cs m) where
   -- This relies on `local f` being proper monad morphism… which is
   -- unknowable, since mtl doesn't have any laws on its
   -- classes. *grumble*
-  local f = unsafeHoist (local f)
+  local f = hoist (local f)
 
 -- | Both 'listen' and 'pass' accumulate intermediate results
 -- strictly.
@@ -352,29 +351,13 @@ instance PrimMonad m => PrimMonad (Node cs m) where
   primitive = lift . primitive
 
 instance MFunctor (Node cs) where
-  hoist f = unsafeHoist f . observe
+  hoist f node = build (\ret con lft -> cata ret con (lft . f) node)
 
 instance MMonad (Node cs) where
   embed f node =
     build
       (\ret con lft ->
          cata ret con (\eff cont -> cata cont con lft (f eff)) node)
-
--- | Same as 'hoist', but potentially unsafe when the function passed
--- is /not/ a proper monad morphism.
---
--- The problem is that, as mentioned on the top of the module, 'Node'
--- violates monad transformer laws, and while said violations should
--- make no visible difference for a proper monad morphism, a general
--- monad transformation /can/ notice it (e.g. by counting the number
--- of the times it is called).
---
--- This problem is avoided in 'MFunctor' instance of 'Node' by
--- transforming 'Node' in a ‘canonical’ form via 'observe' prior to
--- passing it to 'unsafeHoist'; this restores the monad transformer
--- laws, but incurs a performance penalty.
-unsafeHoist :: (forall x. m x -> n x) -> Node cs m a -> Node cs n a
-unsafeHoist f node = build (\ret con lft -> cata ret con (lft . f) node)
 
 -- | Run the 'Node' until it either completes, or initiates
 -- communication on one of its channels.
