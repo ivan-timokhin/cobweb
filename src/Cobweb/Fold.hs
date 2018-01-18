@@ -49,7 +49,7 @@ module Cobweb.Fold
 
 import Data.Proxy (Proxy(Proxy))
 
-import Cobweb.Core (Producer, Yield(Yield))
+import Cobweb.Core (Producer, Yield(Yield), i0, run)
 import Cobweb.Internal (Node, cata, build)
 import Cobweb.Type.Combinators
   ( IIndex
@@ -58,7 +58,6 @@ import Cobweb.Type.Combinators
   , fdecompIdx
   , fdecompReplaceIdx
   , finjectIdx
-  , fsumOnly
   , replaceIdx
   )
 
@@ -74,17 +73,7 @@ foldNode ::
                     -- list.
   -> m (b, r)
 {-# INLINE foldNode #-}
-foldNode comb !seed fin node =
-  cata
-    (\r !x -> pure (fin x, r))
-    (\c cont !x ->
-       case fsumOnly c of
-         Yield a ->
-           let !x' = x `comb` a
-           in cont () x')
-    (\e cont !x -> e >>= (`cont` x))
-    node
-    seed
+foldNode comb !seed fin = run . foldOn i0 comb seed fin
 
 -- | Same as 'foldNode', but discard 'Producer' return value.
 foldNode_ :: Monad m => (x -> a -> x) -> x -> (x -> b) -> Producer a m r -> m b
@@ -105,20 +94,7 @@ foldMNode ::
   -> Producer a m r
   -> m (b, r)
 {-# INLINE foldMNode #-}
-foldMNode comb seed fin node = do
-  !z <- seed
-  cata
-    (\r !x -> do
-       !b <- fin x
-       pure (b, r))
-    (\c cont !x ->
-       case fsumOnly c of
-         Yield a -> do
-           !x' <- x `comb` a
-           cont () x')
-    (\e cont !x -> e >>= (`cont` x))
-    node
-    z
+foldMNode comb seed fin = run . foldMOn i0 comb seed fin
 
 -- | Same as 'foldMNode', but discard 'Producer' return value.
 foldMNode_ ::
