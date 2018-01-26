@@ -83,6 +83,13 @@ test-suite inspection
                       , cobweb
                       , inspection-testing
                       , mtl
+                      , transformers
+                      , mmorph
+                      , transformers-base
+                      , exceptions
+                      , resourcet
+                      , primitive
+                      , kan-extensions
   default-language:     Haskell2010
 
 benchmark criterion

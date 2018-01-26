@@ -186,14 +186,14 @@ build n =
 build_ ::
      (forall r. (a -> r) -> (Coyoneda (FSum cs) r -> r) -> (Coyoneda m r -> r) -> r)
   -> Node cs m a
-{-# INLINE[1] build_ #-}
+{-# INLINE CONLIKE [1] build_ #-}
 build_ f = f Pure buildCon buildEff
 
 augment ::
      (forall r. (a -> r) -> (Coyoneda (FSum cs) r -> r) -> (Coyoneda m r -> r) -> r)
   -> (a -> Node cs m b)
   -> Node cs m b
-{-# INLINE[1] augment #-}
+{-# INLINE CONLIKE [1] augment #-}
 augment n f = n f buildCon buildEff
 
 {-# RULES
@@ -224,15 +224,27 @@ augment n f = n f buildCon buildEff
 
 instance Functor (Node cs m) where
   fmap = liftM
+  {-# INLINE fmap #-}
+  (<$) = fmap . const
+  {-# INLINE (<$) #-}
 
 instance Applicative (Node cs m) where
-  pure x = build (\ret _ _ -> ret x)
+  pure x = build_ (\ret _ _ -> ret x)
+  {-# INLINE pure #-}
   (<*>) = ap
+  {-# INLINE (<*>) #-}
   (*>) = (>>)
+  x <* y = do
+    x' <- x
+    _ <- y
+    pure x'
+  {-# INLINE (<*) #-}
 
 instance Monad (Node cs m) where
   (>>=) = bind_
+  {-# INLINE (>>=) #-}
   (>>) = bindConst_
+  {-# INLINE (>>) #-}
 
 bind_ :: Node cs m a -> (a -> Node cs m b) -> Node cs m b
 {-# INLINE[0] bind_ #-}
@@ -259,9 +271,11 @@ instance MonadTrans (Node cs) where
 
 instance MonadIO m => MonadIO (Node cs m) where
   liftIO = lift . liftIO
+  {-# INLINE liftIO #-}
 
 instance Fail.MonadFail m => Fail.MonadFail (Node cs m) where
   fail = lift . Fail.fail
+  {-# INLINE fail #-}
 
 -- | Lift a @catch@-like function from the base level to 'Node'.
 liftCatch ::
@@ -270,6 +284,7 @@ liftCatch ::
   -> Node cs m a
   -> (e -> Node cs m a)
   -> Node cs m a
+{-# INLINE liftCatch #-}
 liftCatch catchBase node handler =
   cata_
     Pure
@@ -280,24 +295,31 @@ liftCatch catchBase node handler =
 
 instance MonadError e m => MonadError e (Node cs m) where
   throwError = lift . throwError
+  {-# INLINE throwError #-}
   catchError = liftCatch catchError
+  {-# INLINE catchError #-}
 
 -- | This instance is safe only if @'local' f@ in the base monad is a
 -- proper monad morphism (see "Control.Monad.Morph" for details),
 -- which it usually is.
 instance MonadReader r m => MonadReader r (Node cs m) where
   ask = lift ask
+  {-# INLINE ask #-}
   reader = lift . reader
+  {-# INLINE reader #-}
   -- This relies on `local f` being proper monad morphism… which is
   -- unknowable, since mtl doesn't have any laws on its
   -- classes. *grumble*
   local f = hoist (local f)
+  {-# INLINE local #-}
 
 -- | Both 'listen' and 'pass' accumulate intermediate results
 -- strictly.
 instance MonadWriter w m => MonadWriter w (Node cs m) where
   writer = lift . writer
+  {-# INLINE writer #-}
   tell = lift . tell
+  {-# INLINE tell #-}
   listen node =
     build
       (\ret con lft ->
@@ -309,9 +331,10 @@ instance MonadWriter w m => MonadWriter w (Node cs m) where
                 (listen eff)
                 (\(x, w') ->
                    let !w'' = w `mappend` w'
-                   in cont x w''))
+                    in cont x w''))
            node
            mempty)
+  {-# INLINE listen #-}
   pass node =
     build
       (\ret con lft ->
@@ -323,46 +346,58 @@ instance MonadWriter w m => MonadWriter w (Node cs m) where
                 (censor (const mempty) (listen eff))
                 (\(x, w') ->
                    let !w'' = w `mappend` w'
-                   in cont x w''))
+                    in cont x w''))
            node
            mempty)
+  {-# INLINE pass #-}
 
 instance MonadState s m => MonadState s (Node cs m) where
   get = lift get
+  {-# INLINE get #-}
   put = lift . put
+  {-# INLINE put #-}
   state = lift . state
+  {-# INLINE state #-}
 
 instance MonadRWS r w s m => MonadRWS r w s (Node cs m)
 
 instance MonadBase b m => MonadBase b (Node cs m) where
   liftBase = lift . liftBase
+  {-# INLINE liftBase #-}
 
 instance MonadThrow m => MonadThrow (Node cs m) where
   throwM = lift . throwM
+  {-# INLINE throwM #-}
 
 instance MonadCatch m => MonadCatch (Node cs m) where
   catch = liftCatch catch
+  {-# INLINE catch #-}
 
 instance MonadResource m => MonadResource (Node cs m) where
   liftResourceT = lift . liftResourceT
+  {-# INLINE liftResourceT #-}
 
 instance PrimMonad m => PrimMonad (Node cs m) where
   type PrimState (Node cs m) = PrimState m
   primitive = lift . primitive
+  {-# INLINE primitive #-}
 
 instance MFunctor (Node cs) where
   hoist f node = build (\ret con lft -> cata ret con (lft . f) node)
+  {-# INLINE hoist #-}
 
 instance MMonad (Node cs) where
   embed f node =
     build
       (\ret con lft ->
          cata ret con (\eff cont -> cata cont con lft (f eff)) node)
+  {-# INLINE embed #-}
 
 -- | Run the 'Node' until it either completes, or initiates
 -- communication on one of its channels.
 inspect ::
      Monad m => Node cs m a -> m (Either a (Coyoneda (FSum cs) (Node cs m a)))
+{-# INLINE inspect #-}
 inspect =
   unconsNode
     (pure . Left)
@@ -376,6 +411,7 @@ unfold ::
      -- communication request.
   -> b -- ^ Initial seed.
   -> Node cs m a
+{-# INLINE unfold #-}
 unfold step seed =
   build
     (\ret con lft ->
@@ -400,4 +436,5 @@ unfold step seed =
 -- 'observe' = 'unfold' 'inspect'
 -- @
 observe :: Monad m => Node cs m r -> Node cs m r
+{-# INLINE observe #-}
 observe = unfold inspect
