@@ -70,7 +70,7 @@ import Control.Monad.Writer.Class
   ( MonadWriter(listen, pass, tell, writer)
   , censor
   )
-import Data.Functor.Coyoneda (liftCoyoneda, lowerCoyoneda, Coyoneda(Coyoneda))
+import Data.Functor.Coyoneda (Coyoneda(Coyoneda), liftCoyoneda, lowerCoyoneda)
 
 import Cobweb.Type.Combinators (FSum)
 import Cobweb.Internal.Cat (Cat(Cat, Leaf), (|>), unconsCat)
