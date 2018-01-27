@@ -18,7 +18,7 @@ node.  That is to say, it is impossible to split a 'Node' in two
 original ones after they were merged using a function from
 "Cobweb.Zip", and it is likewise impossible to merge two channels
 after they have been split using this module (it may technically be
-possible to fuse them together via "Cobweb.Fuse", but that won't
+possible to merge them together via "Cobweb.Merge", but that won't
 recover original channel).
 
 Note also that, unlike "Cobweb.Zip", this module does not provide

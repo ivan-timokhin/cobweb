@@ -1,6 +1,6 @@
 {-|
-Module: Cobweb.Fuse
-Description: Fusing together identical channels of a Node.
+Module: Cobweb.Merge
+Description: Merging together identical channels of a Node.
 Copyright: 2017 © Ivan Timokhin
 License: BSD3
 Maintainer: timokhin.iv@gmail.com
@@ -36,11 +36,11 @@ its two channels:
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Cobweb.Fuse
-  ( fuse
-  , fuseWith
-  , fuseWithMap
-  , fuseAll
+module Cobweb.Merge
+  ( merge
+  , mergeWith
+  , mergeWithMap
+  , mergeAll
   ) where
 
 import Data.Type.Equality (type (==))
@@ -54,29 +54,29 @@ import Cobweb.Type.Combinators
   , Inductive
   , Remove
   , Replace
-  , fuseSum
-  , fuseSumAll
-  , fuseSumWith
+  , mergeSum
+  , mergeSumAll
+  , mergeSumWith
   )
 
 -- | Given (different) indices of two identical channels of a 'Node',
--- fuse them together at the location of the /second/ index, dropping
+-- merge them together at the location of the /second/ index, dropping
 -- the first one.
 --
 -- ====__Signatures for some specific indices__
 --
 -- @
--- 'fuse' 'Cobweb.Core.i0' 'Cobweb.Core.i1' ::
+-- 'merge' 'Cobweb.Core.i0' 'Cobweb.Core.i1' ::
 --      ('Functor' c, 'Functor' m, 'All' 'Functor' cs)
 --   => 'Node' (c : c : cs) m r
 --   -> 'Node' (c : cs) m r
 --
--- 'fuse' 'Cobweb.Core.i0' 'Cobweb.Core.i2' ::
+-- 'merge' 'Cobweb.Core.i0' 'Cobweb.Core.i2' ::
 --      ('Functor' c1, 'Functor' c, 'Functor' m, 'All' 'Functor' cs)
 --   => 'Node' (c : c1 : c : cs) m r
 --   -> 'Node' (c1 : c : cs) m r
 --
--- 'fuse' 'Cobweb.Core.i0' 'Cobweb.Core.i3' ::
+-- 'merge' 'Cobweb.Core.i0' 'Cobweb.Core.i3' ::
 --      ( 'Functor' c1
 --      , 'Functor' c2
 --      , 'Functor' c
@@ -86,17 +86,17 @@ import Cobweb.Type.Combinators
 --   => 'Node' (c : c1 : c2 : c : cs) m r
 --   -> 'Node' (c1 : c2 : c : cs) m r
 --
--- 'fuse' 'Cobweb.Core.i1' 'Cobweb.Core.i0' ::
+-- 'merge' 'Cobweb.Core.i1' 'Cobweb.Core.i0' ::
 --      ('Functor' c, 'Functor' m, 'All' 'Functor' cs)
 --   => 'Node' (c : c : cs) m r
 --   -> 'Node' (c : cs) m r
 --
--- 'fuse' 'Cobweb.Core.i1' 'Cobweb.Core.i2' ::
+-- 'merge' 'Cobweb.Core.i1' 'Cobweb.Core.i2' ::
 --      ('Functor' c0, 'Functor' c, 'Functor' m, 'All' 'Functor' cs)
 --   => 'Node' (c0 : c : c : cs) m r
 --   -> 'Node' (c0 : c : cs) m r
 --
--- 'fuse' 'Cobweb.Core.i1' 'Cobweb.Core.i3' ::
+-- 'merge' 'Cobweb.Core.i1' 'Cobweb.Core.i3' ::
 --      ( 'Functor' c0
 --      , 'Functor' c2
 --      , 'Functor' c
@@ -106,17 +106,17 @@ import Cobweb.Type.Combinators
 --   => 'Node' (c0 : c : c2 : c : cs) m r
 --   -> 'Node' (c0 : c2 : c : cs) m r
 --
--- 'fuse' 'Cobweb.Core.i2' 'Cobweb.Core.i0' ::
+-- 'merge' 'Cobweb.Core.i2' 'Cobweb.Core.i0' ::
 --      ('Functor' c1, 'Functor' c, 'Functor' m, 'All' 'Functor' cs)
 --   => 'Node' (c : c1 : c : cs) m r
 --   -> 'Node' (c : c1 : cs) m r
 --
--- 'fuse' 'Cobweb.Core.i2' 'Cobweb.Core.i1' ::
+-- 'merge' 'Cobweb.Core.i2' 'Cobweb.Core.i1' ::
 --      ('Functor' c0, 'Functor' c, 'Functor' m, 'All' 'Functor' cs)
 --   => 'Node' (c0 : c : c : cs) m r
 --   -> 'Node' (c0 : c : cs) m r
 --
--- 'fuse' 'Cobweb.Core.i2' 'Cobweb.Core.i3' ::
+-- 'merge' 'Cobweb.Core.i2' 'Cobweb.Core.i3' ::
 --      ( 'Functor' c0
 --      , 'Functor' c1
 --      , 'Functor' c
@@ -126,41 +126,41 @@ import Cobweb.Type.Combinators
 --   => 'Node' (c0 : c1 : c : c : cs) m r
 --   -> 'Node' (c0 : c1 : c : cs) m r
 -- @
-fuse ::
+merge ::
      ((n == k) ~ 'False, Remove n cs cs')
-  => IIndex n cs c -- ^ Index of the first fused channel (this one is
+  => IIndex n cs c -- ^ Index of the first merged channel (this one is
                    -- removed).
-  -> IIndex k cs c -- ^ Index of the second fused channel (this one is
+  -> IIndex k cs c -- ^ Index of the second merged channel (this one is
                    -- kept).
   -> Node cs m r
   -> Node cs' m r
-fuse n k = gmapAll (fuseSum n k)
+merge n k = gmapAll (mergeSum n k)
 
 -- | Given a way to transform two different channels of a 'Node' into
--- a common form, fuse them together at the location of the second
+-- a common form, merge them together at the location of the second
 -- index.
 --
 -- Conceptually,
 --
 -- @
--- 'fuse' = 'fuseWith' 'id' 'id'
+-- 'merge' = 'mergeWith' 'id' 'id'
 -- @
-fuseWith ::
+mergeWith ::
      ((n == k) ~ 'False, Replace k cs c' cs', Remove n cs' cs'')
   => (forall x. c1 x -> c' x) -- ^ Transform the first channel into a
                               -- common one.
   -> (forall x. c2 x -> c' x) -- ^ Transform the second channel into a
                               -- common one.
-  -> IIndex n cs c1 -- ^ Index of the first fused channel (this one is
+  -> IIndex n cs c1 -- ^ Index of the first merged channel (this one is
                     -- removed).
-  -> IIndex k cs c2 -- ^ Index of the second fused channel (this one
+  -> IIndex k cs c2 -- ^ Index of the second merged channel (this one
                     -- is replaced).
   -> Node cs m r
   -> Node cs'' m r
-fuseWith f g n k = gmapAll (fuseSumWith f g n k)
+mergeWith f g n k = gmapAll (mergeSumWith f g n k)
 
--- | A specialisation of 'fuseWith' for 'Yield' channels.
-fuseWithMap ::
+-- | A specialisation of 'mergeWith' for 'Yield' channels.
+mergeWithMap ::
      ((n == k) ~ 'False, Replace k cs (Yield c) cs', Remove n cs' cs'')
   => (a -> c) -- ^ Transform the values on the first channel.
   -> (b -> c) -- ^ Transform the values on the second channel.
@@ -168,9 +168,9 @@ fuseWithMap ::
   -> IIndex k cs (Yield b) -- ^ Index of the replaced channel.
   -> Node cs m r
   -> Node cs'' m r
-fuseWithMap f g = fuseWith (mapYield f) (mapYield g)
+mergeWithMap f g = mergeWith (mapYield f) (mapYield g)
 
--- | Given a 'Node' with /all/ channels identical, fuse them all
+-- | Given a 'Node' with /all/ channels identical, merge them all
 -- together.
-fuseAll :: (cs `AllEqual` c, Inductive cs) => Node cs m r -> Leaf c m r
-fuseAll = gmapAll (FInL . fuseSumAll)
+mergeAll :: (cs `AllEqual` c, Inductive cs) => Node cs m r -> Leaf c m r
+mergeAll = gmapAll (FInL . mergeSumAll)

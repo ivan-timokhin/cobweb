@@ -64,9 +64,9 @@ module Cobweb.Type.Combinators
   , finjectIdx
   , finl
   , finr
-  , fuseSum
-  , fuseSumWith
-  , fuseSumAll
+  , mergeSum
+  , mergeSumWith
+  , mergeSumAll
     -- * Type synonyms
   , AllEqual
   ) where
@@ -285,7 +285,7 @@ class Inductive (fs :: [* -> *]) where
   injectTerm :: IIndex n fs f -> f a -> FSum fs a
   inlI :: AppendW fs gs hs -> FSum fs a -> FSum hs a
   inrI :: AppendW fs gs hs -> FSum gs a -> FSum hs a
-  fuseSumI ::
+  mergeSumI ::
        (n == m) ~ 'False
     => RemoveW n fs fs'
     -> IIndex n fs f
@@ -293,7 +293,7 @@ class Inductive (fs :: [* -> *]) where
     -> FSum fs a
     -> FSum fs' a
   injectReplaced :: ReplaceW i fs g fs' -> g a -> FSum fs' a
-  fuseSumWithI ::
+  mergeSumWithI ::
        (n == m) ~ 'False
     => (f a -> h a)
     -> (g a -> h a)
@@ -303,7 +303,7 @@ class Inductive (fs :: [* -> *]) where
     -> IIndex m fs g
     -> FSum fs a
     -> FSum res a
-  fuseSumAllI :: (fs `AllEqual` f) => FSum fs a -> f a
+  mergeSumAllI :: (fs `AllEqual` f) => FSum fs a -> f a
 
 instance Inductive '[] where
   lengthI = LZ
@@ -324,14 +324,14 @@ instance Inductive '[] where
   {-# INLINE inlI #-}
   inrI AppZ = id
   {-# INLINE inrI #-}
-  fuseSumI _ _ _ = absurdFSum
-  {-# INLINE fuseSumI #-}
+  mergeSumI _ _ _ = absurdFSum
+  {-# INLINE mergeSumI #-}
   injectReplaced = absurdReplace
   {-# INLINE injectReplaced #-}
-  fuseSumWithI _ _ _ _ _ _ = absurdFSum
-  {-# INLINE fuseSumWithI #-}
-  fuseSumAllI = absurdFSum
-  {-# INLINE fuseSumAllI #-}
+  mergeSumWithI _ _ _ _ _ _ = absurdFSum
+  {-# INLINE mergeSumWithI #-}
+  mergeSumAllI = absurdFSum
+  {-# INLINE mergeSumAllI #-}
 
 instance Inductive fs => Inductive (f : fs) where
   lengthI = LS lengthI
@@ -369,33 +369,33 @@ instance Inductive fs => Inductive (f : fs) where
   {-# INLINE inlI #-}
   inrI (AppS a) = FInR . inrI a
   {-# INLINE inrI #-}
-  fuseSumI RemZ IIZ (IIS m) (FInL x) = injectTerm m x
-  fuseSumI RemZ IIZ (IIS _) (FInR x) = x
-  fuseSumI r@(RemS _) n@(IIS _) IIZ fsum =
+  mergeSumI RemZ IIZ (IIS m) (FInL x) = injectTerm m x
+  mergeSumI RemZ IIZ (IIS _) (FInR x) = x
+  mergeSumI r@(RemS _) n@(IIS _) IIZ fsum =
     case decompIdxI r n fsum of
       Right x -> FInL x
       Left x -> x
-  fuseSumI (RemS _) (IIS _) (IIS _) (FInL x) = FInL x
-  fuseSumI (RemS r) (IIS n) (IIS m) (FInR x) = FInR (fuseSumI r n m x)
-  {-# INLINE fuseSumI #-}
+  mergeSumI (RemS _) (IIS _) (IIS _) (FInL x) = FInL x
+  mergeSumI (RemS r) (IIS n) (IIS m) (FInR x) = FInR (mergeSumI r n m x)
+  {-# INLINE mergeSumI #-}
   injectReplaced RepZ = FInL
   injectReplaced (RepS r) = FInR . injectReplaced r
   {-# INLINE injectReplaced #-}
-  fuseSumWithI f _ RemZ IIZ (RepS rep) (IIS _) (FInL x) =
+  mergeSumWithI f _ RemZ IIZ (RepS rep) (IIS _) (FInL x) =
     injectReplaced rep (f x)
-  fuseSumWithI _ g RemZ IIZ (RepS rep) (IIS m) (FInR x) = replaceTermI rep m g x
-  fuseSumWithI _ g (RemS _) (IIS _) RepZ IIZ (FInL x) = FInL (g x)
-  fuseSumWithI f _ (RemS r) (IIS n) RepZ IIZ (FInR s) =
+  mergeSumWithI _ g RemZ IIZ (RepS rep) (IIS m) (FInR x) = replaceTermI rep m g x
+  mergeSumWithI _ g (RemS _) (IIS _) RepZ IIZ (FInL x) = FInL (g x)
+  mergeSumWithI f _ (RemS r) (IIS n) RepZ IIZ (FInR s) =
     case decompIdxI r n s of
       Right x -> FInL (f x)
       Left x -> FInR x
-  fuseSumWithI _ _ (RemS _) (IIS _) (RepS _) (IIS _) (FInL x) = FInL x
-  fuseSumWithI f g (RemS r) (IIS n) (RepS rep) (IIS m) (FInR x) =
-    FInR (fuseSumWithI f g r n rep m x)
-  {-# INLINE fuseSumWithI #-}
-  fuseSumAllI (FInL x) = x
-  fuseSumAllI (FInR x) = fuseSumAllI x
-  {-# INLINE fuseSumAllI #-}
+  mergeSumWithI _ _ (RemS _) (IIS _) (RepS _) (IIS _) (FInL x) = FInL x
+  mergeSumWithI f g (RemS r) (IIS n) (RepS rep) (IIS m) (FInR x) =
+    FInR (mergeSumWithI f g r n rep m x)
+  {-# INLINE mergeSumWithI #-}
+  mergeSumAllI (FInL x) = x
+  mergeSumAllI (FInR x) = mergeSumAllI x
+  {-# INLINE mergeSumAllI #-}
 
 -- | Produce an index of a replaced element in the new list.
 replaceIdx ::
@@ -552,28 +552,28 @@ finr _ = inrI (appendW :: AppendW fs gs hs)
 -- this:
 --
 -- @
--- 'fuseSum' 'i0' 'i1' :: 'FSum' (f : f : fs) a -> 'FSum' (f : fs) a
--- 'fuseSum' 'i0' 'i2' :: 'FSum' (f : f1 : f : fs) a -> 'FSum' (f1 : f : fs)
--- 'fuseSum' 'i2' 'i0' :: 'FSum' (f : f1 : f : fs) a -> 'FSum' (f : f1 : fs)
+-- 'mergeSum' 'i0' 'i1' :: 'FSum' (f : f : fs) a -> 'FSum' (f : fs) a
+-- 'mergeSum' 'i0' 'i2' :: 'FSum' (f : f1 : f : fs) a -> 'FSum' (f1 : f : fs)
+-- 'mergeSum' 'i2' 'i0' :: 'FSum' (f : f1 : f : fs) a -> 'FSum' (f : f1 : fs)
 -- @
 --
--- Trying to call @'fuseSum' 'i0' 'i0'@ and such results in a type
+-- Trying to call @'mergeSum' 'i0' 'i0'@ and such results in a type
 -- error.  Unfortunately, it does not mention indices at all, instead
 -- complaining that
 --
 -- >    • Couldn't match type ‘'True’ with ‘'False’
--- >        arising from a use of ‘fuseSum’
+-- >        arising from a use of ‘mergeSum’
 --
--- so if such errors arise, a likely cause is trying to 'fuseSum' a term
+-- so if such errors arise, a likely cause is trying to 'mergeSum' a term
 -- with itself.
-fuseSum ::
+mergeSum ::
      ((n == m) ~ 'False, Remove n fs fs')
   => IIndex n fs f -- ^ The index of the term to be moved.
   -> IIndex m fs f -- ^ The index of the term to be kept.
   -> FSum fs a
   -> FSum fs' a
-{-# INLINE fuseSum #-}
-fuseSum = fuseSumI removeW
+{-# INLINE mergeSum #-}
+mergeSum = mergeSumI removeW
 
 -- | Unify two terms in the sum by transforming them into a common
 -- functor, discarding the first term and replacing the second.
@@ -581,32 +581,32 @@ fuseSum = fuseSumI removeW
 -- Specialised to different indices, the type looks like this:
 --
 -- @
--- \\f g -> 'fuseSumWith' f g i0 i1
+-- \\f g -> 'mergeSumWith' f g i0 i1
 --   :: (f0 a -> h a) -> (f1 a -> h a) -> 'FSum' (f0 : f1 : fs) a -> 'FSum' (h : as) a
 --
--- \\f g -> 'fuseSumWith' f g i0 i2
+-- \\f g -> 'mergeSumWith' f g i0 i2
 --   :: (f0 a -> h a) -> (f2 a -> h a) -> 'FSum' (f0 : f1 : f2 : fs) a -> 'FSum' (f1 : h : fs) a
 --
--- \\f g -> 'fuseSumWith' f g i2 i0
+-- \\f g -> 'mergeSumWith' f g i2 i0
 --   :: (f2 a -> h a) -> (f0 a -> h a) -> 'FSum' (f0 : f1 : f2 : fs) a -> 'FSum' (h : f1 : fs) a
 -- @
-fuseSumWith ::
+mergeSumWith ::
      forall n m f g h a fs fsrep res.
      ((n == m) ~ 'False, Replace m fs h fsrep, Remove n fsrep res)
-  => (f a -> h a) -- ^ Transform first fused element.
-  -> (g a -> h a) -- ^ Transform second fused element.
+  => (f a -> h a) -- ^ Transform first merged element.
+  -> (g a -> h a) -- ^ Transform second merged element.
   -> IIndex n fs f -- ^ Index of removed element.
   -> IIndex m fs g -- ^ Index of replaced element.
   -> FSum fs a
   -> FSum res a
-{-# INLINE fuseSumWith #-}
-fuseSumWith f g n' = fuseSumWithI f g removeW n' replaceW
+{-# INLINE mergeSumWith #-}
+mergeSumWith f g n' = mergeSumWithI f g removeW n' replaceW
 
 -- | Unify /all/ of the terms in the sum, if they are all identical
 -- (which is the meaning of a rather weird-looking constraint).
-fuseSumAll :: (Inductive fs, fs `AllEqual` f) => FSum fs a -> f a
-{-# INLINE fuseSumAll #-}
-fuseSumAll = fuseSumAllI
+mergeSumAll :: (Inductive fs, fs `AllEqual` f) => FSum fs a -> f a
+{-# INLINE mergeSumAll #-}
+mergeSumAll = mergeSumAllI
 
 -- | Require that all elements of list @bs@ are equal to @a@.
 type family AllEqual bs a :: Constraint where

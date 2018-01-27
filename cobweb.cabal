@@ -31,7 +31,7 @@ library
                      , Cobweb.Fold
                      , Cobweb.Pipe
                      , Cobweb.Link
-                     , Cobweb.Fuse
+                     , Cobweb.Merge
                      , Cobweb.Zip
                      , Cobweb.Unzip
                      , Cobweb.Group
